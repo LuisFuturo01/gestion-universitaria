@@ -7,9 +7,9 @@ import { generarHistorialPDF } from "../../utils/pdfReports";
 export default function HistoryPage() {
   const { session } = useAuth();
   const data = useData();
-  const esEstudiante = session.rolActivo === "ESTUDIANTE";
+  const esEstudiante = session?.rolActivo === "ESTUDIANTE";
 
-  const [idEstudiante, setIdEstudiante] = useState(esEstudiante ? session.estudiante.id_persona : data.estudiantes[0]?.id_persona);
+  const [idEstudiante, setIdEstudiante] = useState(null);
   const [busqueda, setBusqueda] = useState("");
 
   const listaEstudiantes = useMemo(() => {
@@ -17,11 +17,12 @@ export default function HistoryPage() {
       .map((e) => ({ ...e, persona: data.getPersona(e.id_persona) }))
       .filter((e) => {
         const q = busqueda.toLowerCase();
-        return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.ru}`.toLowerCase().includes(q);
+        return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.ru || ''}`.toLowerCase().includes(q);
       });
   }, [data, busqueda]);
 
-  const estudianteActivo = data.estudiantes.find((e) => e.id_persona === idEstudiante);
+  const estudianteIdActual = idEstudiante || (esEstudiante ? session?.estudiante?.id_persona : data.estudiantes[0]?.id_persona);
+  const estudianteActivo = data.estudiantes.find((e) => e.id_persona === estudianteIdActual) || data.estudiantes[0];
   const personaActiva = estudianteActivo ? data.getPersona(estudianteActivo.id_persona) : null;
   const historial = estudianteActivo ? data.getHistorialEstudiante(estudianteActivo.id_persona) : [];
 
@@ -45,7 +46,7 @@ export default function HistoryPage() {
             {!esEstudiante && (
               <>
                 <input className="search-input" placeholder="Buscar estudiante o RU..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
-                <select value={idEstudiante} onChange={(e) => setIdEstudiante(Number(e.target.value))}>
+                <select value={estudianteIdActual || ""} onChange={(e) => setIdEstudiante(Number(e.target.value))}>
                   {listaEstudiantes.map((e) => (
                     <option key={e.id_persona} value={e.id_persona}>{e.persona.nombres} {e.persona.apellidos} — {e.ru}</option>
                   ))}
@@ -61,7 +62,7 @@ export default function HistoryPage() {
         <div className="page-card" style={{ marginBottom: 16 }}>
           <div className="student-row-header">
             <strong>{personaActiva.nombres} {personaActiva.apellidos}</strong>
-            <span className="activity-meta">RU: {estudianteActivo.ru} · Ingreso: {estudianteActivo.anio_ingreso}</span>
+            <span className="activity-meta">RU: {estudianteActivo?.ru || `RU-${estudianteActivo?.id_persona}`} · Ingreso: {estudianteActivo?.anio_ingreso || 2021}</span>
             <span className="activity-meta">Promedio (aprobadas): <strong>{promedioGeneral}</strong></span>
           </div>
         </div>
@@ -76,8 +77,8 @@ export default function HistoryPage() {
             <tbody>
               {historial.map((h) => (
                 <tr key={h.id_detalle}>
-                  <td>{h.gestion.periodo}</td>
-                  <td>{h.materia.sigla} — {h.materia.nombre}</td>
+                  <td>{h.gestion?.periodo || "—"}</td>
+                  <td>{h.materia?.sigla} — {h.materia?.nombre}</td>
                   <td><Badge>{h.estado}</Badge></td>
                   <td>{h.nota_final}</td>
                 </tr>

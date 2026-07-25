@@ -13,17 +13,16 @@ const ESTADO_INFO = {
 export default function AcademicOfferPage() {
   const { session } = useAuth();
   const data = useData();
-  const esEstudiante = session.rolActivo === "ESTUDIANTE";
+  const esEstudiante = session?.rolActivo === "ESTUDIANTE";
 
-  const carreraInicial = esEstudiante
-    ? data.planes.find((p) => p.id_plan === session.estudiante.id_plan)?.id_carrera
-    : data.carreras[0]?.id_carrera;
-
-  const [idCarrera, setIdCarrera] = useState(carreraInicial);
-  const [idGestion, setIdGestion] = useState(data.getGestionActiva()?.id_gestion || data.gestiones[0]?.id_gestion);
+  const [idCarrera, setIdCarrera] = useState(null);
+  const [idGestion, setIdGestion] = useState(null);
   const [seleccionada, setSeleccionada] = useState(null);
 
-  const plan = data.planes.find((p) => p.id_carrera === idCarrera);
+  const carreraSeleccionada = idCarrera || data.carreras[0]?.id_carrera || 1;
+  const gestionSeleccionada = idGestion || data.getGestionActiva()?.id_gestion || data.gestiones[0]?.id_gestion || 1;
+
+  const plan = data.planes.find((p) => p.id_carrera === carreraSeleccionada) || data.planes[0];
   const pensum = useMemo(() => (plan ? data.getPensumPlan(plan.id_plan) : []), [plan, data]);
 
   const porSemestre = useMemo(() => {
@@ -36,7 +35,7 @@ export default function AcademicOfferPage() {
   }, [pensum]);
 
   const paralelosSeleccionada = seleccionada
-    ? data.getParalelosOferta(seleccionada.id_materia, idGestion)
+    ? data.getParalelosOferta(seleccionada.id_materia, gestionSeleccionada)
     : [];
 
   return (
@@ -46,12 +45,12 @@ export default function AcademicOfferPage() {
         subtitle="Pensum por mención, gestión y semestre"
         actions={
           <>
-            <select value={idCarrera} onChange={(e) => setIdCarrera(Number(e.target.value))}>
+            <select value={carreraSeleccionada} onChange={(e) => setIdCarrera(Number(e.target.value))}>
               {data.carreras.map((c) => (
                 <option key={c.id_carrera} value={c.id_carrera}>{c.nombre}</option>
               ))}
             </select>
-            <select value={idGestion} onChange={(e) => setIdGestion(Number(e.target.value))}>
+            <select value={gestionSeleccionada} onChange={(e) => setIdGestion(Number(e.target.value))}>
               {data.gestiones.map((g) => (
                 <option key={g.id_gestion} value={g.id_gestion}>{g.periodo} {g.estado === "Activa" ? "(activa)" : ""}</option>
               ))}
@@ -69,7 +68,7 @@ export default function AcademicOfferPage() {
       )}
 
       {Object.keys(porSemestre).length === 0 ? (
-        <EmptyState text="Esta carrera aún no tiene pensum cargado." />
+        <EmptyState text="Esta carrera aún no tiene materias asignadas en el pensum." />
       ) : (
         Object.entries(porSemestre)
           .sort(([a], [b]) => a - b)
@@ -82,7 +81,7 @@ export default function AcademicOfferPage() {
                     ? data.getEstadoMateriaParaEstudiante(session.estudiante.id_persona, m.id_materia)
                     : null;
                   const clase = estado ? ESTADO_INFO[estado].clase : "materia-neutral";
-                  const oferta = data.getParalelosOferta(m.id_materia, idGestion);
+                  const oferta = data.getParalelosOferta(m.id_materia, gestionSeleccionada);
                   return (
                     <button
                       key={m.id_materia}
@@ -92,7 +91,7 @@ export default function AcademicOfferPage() {
                     >
                       <strong>{m.materia.sigla}</strong>
                       <span>{m.materia.nombre}</span>
-                      <small>{m.materia.creditos} créditos · {oferta.length} paralelo(s)</small>
+                      <small>{m.materia.creditos || m.materia.carga_horaria} hrs · {oferta.length} paralelo(s)</small>
                     </button>
                   );
                 })}
@@ -120,7 +119,7 @@ export default function AcademicOfferPage() {
                       <td>{p.docenteNombre}</td>
                       <td>
                         {p.horario
-                          ? `${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.dia} ${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_inicio}-${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_fin}`
+                          ? `${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.dia || ''} ${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_inicio || ''}`
                           : "Por definir"}
                       </td>
                       <td>{p.cupo_disponible} / {p.cupo_maximo}</td>

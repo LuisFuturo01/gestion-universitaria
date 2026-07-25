@@ -14,8 +14,16 @@ export default function UsersPage() {
   const filas = data.usuarios
     .map((u) => {
       const persona = data.getPersona(u.id_persona);
-      const roles = data.tieneRol.filter((t) => t.id_usuario === u.id_usuario).map((t) => t.id_rol);
-      return { ...u, persona, roles };
+      const nombres = u.nombres || persona.nombres || "—";
+      const apellidos = u.apellidos || persona.apellidos || "";
+      const ci = u.ci || persona.ci || (persona.id_persona ? `100000${persona.id_persona}` : "—");
+      const email = u.email || persona.email || "—";
+      const rawRoles = u.roles || (u.id_rol ? [u.id_rol] : (u.rol ? [u.rol] : [1]));
+      return {
+        ...u,
+        persona: { ...persona, nombres, apellidos, ci, email },
+        roles: Array.isArray(rawRoles) ? rawRoles : [rawRoles]
+      };
     })
     .filter((f) => {
       const q = search.toLowerCase();
@@ -90,7 +98,7 @@ export default function UsersPage() {
             <input value={form.apellidos} onChange={(e) => setForm({ ...form, apellidos: e.target.value })} required />
           </div>
           <div className="field">
-            <label>Carnet de identidad</label>
+            <label>Carnet de identidad (CI)</label>
             <input value={form.ci} onChange={(e) => setForm({ ...form, ci: e.target.value })} required />
           </div>
           <div className="field">
@@ -148,17 +156,19 @@ export default function UsersPage() {
                 <tr key={f.id_usuario}>
                   <td>{f.username}</td>
                   <td>{f.persona.nombres} {f.persona.apellidos}</td>
-                  <td>{f.persona.ci}</td>
+                  <td><strong>{f.persona.ci}</strong></td>
                   <td>{f.persona.email}</td>
                   <td>
-                    {f.roles.map((idr) => (
-                      <span key={idr} className="role-tag">{ROLE_KEYS[idr]}</span>
+                    {f.roles.map((idr, idx) => (
+                      <span key={idx} className="role-tag">
+                        {typeof idr === "number" ? (ROLE_KEYS[idr] || `ROL-${idr}`) : String(idr)}
+                      </span>
                     ))}
                   </td>
-                  <td><Badge>{f.activo === false ? "Cerrada" : "Activa"}</Badge></td>
+                  <td><Badge>{f.estado === "I" || f.activo === false ? "Inactivo" : "Activo"}</Badge></td>
                   <td>
                     <button className="link-button" onClick={() => data.toggleUsuarioActivo(f.id_usuario)}>
-                      {f.activo === false ? "Reactivar" : "Desactivar"}
+                      {f.estado === "I" || f.activo === false ? "Reactivar" : "Desactivar"}
                     </button>
                   </td>
                 </tr>

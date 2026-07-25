@@ -5,8 +5,10 @@ export const obtTodo = async () => {
         SELECT
             u.id_usuario,
             u.username,
+            u.id_persona,
             u.id_rol,
             r.nombre AS rol,
+            p.ci,
             p.nombres,
             p.apellidos,
             p.email
@@ -25,8 +27,10 @@ export const obtUsuario = async (id) => {
         SELECT
             u.id_usuario,
             u.username,
+            u.id_persona,
             u.id_rol,
             r.nombre AS rol,
+            p.ci,
             p.nombres,
             p.apellidos,
             p.email

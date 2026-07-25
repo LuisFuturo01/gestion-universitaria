@@ -48,6 +48,8 @@ export function DataProvider({ children }) {
         resPlanMaterias,
         resPrerequisitos,
         resRoles,
+        resEstudiantes,
+        resDocentes,
       ] = await Promise.allSettled([
         catalogService.carreras(),
         catalogService.planes(),
@@ -63,6 +65,8 @@ export function DataProvider({ children }) {
         catalogService.planMaterias(),
         catalogService.prerequisitos(),
         catalogService.roles(),
+        catalogService.estudiantes(),
+        catalogService.docentes(),
       ]);
 
       if (resCarreras.status === "fulfilled" && Array.isArray(resCarreras.value.data)) {
@@ -114,6 +118,14 @@ export function DataProvider({ children }) {
         setPersonas(resActores.value.data);
       }
 
+      if (resEstudiantes.status === "fulfilled" && Array.isArray(resEstudiantes.value.data)) {
+        setEstudiantes(resEstudiantes.value.data);
+      }
+
+      if (resDocentes.status === "fulfilled" && Array.isArray(resDocentes.value.data)) {
+        setDocentes(resDocentes.value.data);
+      }
+
       if (resInscripciones.status === "fulfilled" && Array.isArray(resInscripciones.value.data)) {
         const rawIns = resInscripciones.value.data;
         const newIns = [];
@@ -154,13 +166,48 @@ export function DataProvider({ children }) {
     reloadFromBackend();
   }, []);
 
+  // Derivación segura de estudiantes y docentes si las tablas de unión están vacías
+  const estudiantesCalculados = useMemo(() => {
+    if (estudiantes.length > 0) return estudiantes;
+    const fuente = personas.length > 0 ? personas : usuarios;
+    return fuente.map((p) => ({
+      id_persona: p.id_persona,
+      ru: p.ru || `RU-${p.id_persona}`,
+      id_plan: p.id_plan || 1,
+      anio_ingreso: p.anio_ingreso || 2021,
+    }));
+  }, [estudiantes, personas, usuarios]);
+
+  const docentesCalculados = useMemo(() => {
+    if (docentes.length > 0) return docentes;
+    const fuente = personas.length > 0 ? personas : usuarios;
+    return fuente.map((p) => ({
+      id_persona: p.id_persona,
+      registro_docente: p.registro_docente || `DOC-${p.id_persona}`,
+      grado_academico: p.grado_academico || "Lic.",
+    }));
+  }, [docentes, personas, usuarios]);
+
   // ---------- Helpers de lectura ----------
-  const getPersona = (id_persona) => personas.find((p) => p.id_persona === id_persona) || { nombres: "—", apellidos: "" };
-  const getGestionActiva = () => gestiones.find((g) => g.estado === "Activa") || gestiones[gestiones.length - 1];
+  const getPersona = (id_persona) => {
+    const fromP = personas.find((p) => p.id_persona === id_persona);
+    if (fromP && fromP.nombres) return fromP;
+    const fromU = usuarios.find((u) => u.id_persona === id_persona || u.id_usuario === id_persona);
+    if (fromU) return {
+      id_persona: fromU.id_persona || id_persona,
+      nombres: fromU.nombres || fromU.username,
+      apellidos: fromU.apellidos || "",
+      ci: fromU.ci || "—",
+      email: fromU.email || "—"
+    };
+    return { id_persona, nombres: "—", apellidos: "", ci: "—", email: "—" };
+  };
+
+  const getGestionActiva = () => gestiones.find((g) => g.estado === "Activa") || gestiones[gestiones.length - 1] || { id_gestion: 1, periodo: "I/2026", estado: "Activa" };
 
   const getDocenteNombre = (id_persona) => fullName(getPersona(id_persona));
 
-  const getMateria = (id_materia) => materias.find((m) => m.id_materia === id_materia);
+  const getMateria = (id_materia) => materias.find((m) => m.id_materia === id_materia) || { id_materia, sigla: `MAT-${id_materia}`, nombre: `Materia ${id_materia}`, creditos: 5 };
 
   const getPensumPlan = (id_plan) =>
     planMateria
@@ -181,7 +228,7 @@ export function DataProvider({ children }) {
       .filter((d) => idsIns.includes(d.id_inscripcion))
       .map((d) => {
         const ins = insEst.find((i) => i.id_inscripcion === d.id_inscripcion);
-        const gestion = gestiones.find((g) => g.id_gestion === (ins ? ins.id_gestion : 1));
+        const gestion = gestiones.find((g) => g.id_gestion === (ins ? ins.id_gestion : 1)) || { id_gestion: 1, periodo: "I/2026" };
         return { ...d, gestion, materia: getMateria(d.id_materia) };
       })
       .filter((d) => d.gestion && d.materia)
@@ -206,7 +253,7 @@ export function DataProvider({ children }) {
       .filter((p) => p.id_materia === id_materia && p.id_gestion === id_gestion)
       .map((p) => ({
         ...p,
-        cupo_disponible: p.cupo_maximo - p.cupo_actual,
+        cupo_disponible: (p.cupo_maximo || 40) - (p.cupo_actual || 0),
         docenteNombre: getDocenteNombre(p.id_docente),
         horario: seCursa.find((s) => s.id_materia === id_materia && s.id_paralelo === p.id_paralelo),
       }));
@@ -313,8 +360,8 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
-      estudiantes,
-      docentes,
+      estudiantes: estudiantesCalculados,
+      docentes: docentesCalculados,
       loadingBackend,
       reloadFromBackend,
       getPersona,
@@ -353,8 +400,8 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
-      estudiantes,
-      docentes,
+      estudiantesCalculados,
+      docentesCalculados,
       aulas,
       horarios,
       seCursa,
