@@ -1,38 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import {
-  USUARIOS,
-  PERSONAS,
-  TIENE_ROL,
-  ROLES,
-  ROLE_KEYS,
-  ESTUDIANTES,
-  DOCENTES,
-  fullName,
-} from "../data/mockData";
+import { authService } from "../services/api";
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = "sau_session"; // Sistema Académico Universitario
-
-function buildSession(usuario) {
-  const persona = PERSONAS.find((p) => p.id_persona === usuario.id_persona);
-  const idsRol = TIENE_ROL.filter((t) => t.id_usuario === usuario.id_usuario).map((t) => t.id_rol);
-  const roles = ROLES.filter((r) => idsRol.includes(r.id_rol)).map((r) => ROLE_KEYS[r.id_rol]);
-  const estudiante = ESTUDIANTES.find((e) => e.id_persona === usuario.id_persona) || null;
-  const docente = DOCENTES.find((d) => d.id_persona === usuario.id_persona) || null;
-
-  return {
-    id_usuario: usuario.id_usuario,
-    username: usuario.username,
-    id_persona: persona.id_persona,
-    nombreCompleto: fullName(persona),
-    persona,
-    roles, // ej: ["DOCENTE"] o ["DIRECTOR","DOCENTE"]
-    rolActivo: roles[0],
-    estudiante,
-    docente,
-    loginTime: new Date().toISOString(),
-  };
-}
+const STORAGE_KEY = "sau_session";
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -50,15 +20,44 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const login = (username, password) => {
-    const usuario = USUARIOS.find((u) => u.username === username.trim());
-    if (!usuario) return { ok: false, mensaje: "Usuario no encontrado." };
-    if (usuario.password !== password) return { ok: false, mensaje: "Contraseña incorrecta." };
+  const login = async (username, password) => {
+    try {
+      const res = await authService.login({ username: username.trim(), password });
+      if (res.data && res.data.token && res.data.usuario) {
+        const u = res.data.usuario;
+        const mainU = Array.isArray(u) ? u[0] : u;
+        const roles = Array.isArray(mainU.roles) ? mainU.roles : [mainU.rol || "ADMIN"];
 
-    const nueva = buildSession(usuario);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nueva));
-    setSession(nueva);
-    return { ok: true, session: nueva };
+        const persona = {
+          id_persona: mainU.id_persona,
+          nombres: mainU.nombre_completo || mainU.nombres || mainU.username,
+          apellidos: mainU.apellidos || "",
+          email: mainU.email || "",
+        };
+
+        const nueva = {
+          id_usuario: mainU.id_usuario,
+          username: mainU.username,
+          id_persona: mainU.id_persona,
+          nombreCompleto: mainU.nombre_completo || `${mainU.nombres || ""} ${mainU.apellidos || ""}`.trim() || mainU.username,
+          persona,
+          roles,
+          rolActivo: roles[0] || "ADMIN",
+          estudiante: { id_persona: mainU.id_persona, ru: mainU.ru || `RU-${mainU.id_persona}` },
+          docente: { id_persona: mainU.id_persona, registro_docente: `DOC-${mainU.id_persona}` },
+          token: res.data.token,
+          loginTime: new Date().toISOString(),
+        };
+
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nueva));
+        setSession(nueva);
+        return { ok: true, session: nueva };
+      }
+      return { ok: false, mensaje: res.data?.mensaje || "Credenciales incorrectas." };
+    } catch (err) {
+      const msg = err?.response?.data?.mensaje || err?.response?.data?.error || "Error de conexión al servidor.";
+      return { ok: false, mensaje: typeof msg === "string" ? msg : "Credenciales incorrectas." };
+    }
   };
 
   const logout = () => {

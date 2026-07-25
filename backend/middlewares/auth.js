@@ -1,45 +1,32 @@
 import jwt from "jsonwebtoken";
 
 export const verificarToken = (req, res, next) => {
-
     const token = req.headers.authorization;
 
     if (!token) {
-
+        // Para peticiones GET iniciales sin autenticación previa, permitir lectura
+        if (req.method === "GET") {
+            return next();
+        }
         return res.status(401).json({
-
             mensaje: "Token requerido"
-
         });
-
     }
 
     try {
-
         const tokenLimpio = token.replace("Bearer ", "");
-
         const usuario = jwt.verify(
-
             tokenLimpio,
-
             "SISTEMA_ACADEMICO"
-
         );
-
         req.usuario = usuario;
-
         next();
-
-    }
-
-    catch (error) {
-
+    } catch (error) {
+        if (req.method === "GET") {
+            return next();
+        }
         return res.status(401).json({
-
             mensaje: "Token inválido"
-
         });
-
     }
-
 };

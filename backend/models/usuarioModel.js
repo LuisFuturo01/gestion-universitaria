@@ -1,17 +1,18 @@
-import { pool }  from "../config/db.js";
+import { pool } from "../config/db.js";
 
 export const obtTodo = async () => {
-
     const [resultado] = await pool.query(`
         SELECT
             u.id_usuario,
             u.username,
+            u.id_rol,
+            r.nombre AS rol,
             p.nombres,
             p.apellidos,
             p.email
-        FROM USUARIO u
-        INNER JOIN PERSONA p
-        ON u.id_persona = p.id_persona
+        FROM usuario u
+        LEFT JOIN persona p ON u.id_persona = p.id_persona
+        LEFT JOIN rol r ON u.id_rol = r.id_rol
         WHERE u.estado = 'A'
     `);
 
@@ -19,18 +20,19 @@ export const obtTodo = async () => {
 };
 
 export const obtUsuario = async (id) => {
-
     const [resultado] = await pool.query(
         `
         SELECT
             u.id_usuario,
             u.username,
+            u.id_rol,
+            r.nombre AS rol,
             p.nombres,
             p.apellidos,
             p.email
-        FROM USUARIO u
-        INNER JOIN PERSONA p
-        ON u.id_persona = p.id_persona
+        FROM usuario u
+        LEFT JOIN persona p ON u.id_persona = p.id_persona
+        LEFT JOIN rol r ON u.id_rol = r.id_rol
         WHERE u.id_usuario = ? AND u.estado = 'A'  
         `,
         [id]
@@ -40,16 +42,15 @@ export const obtUsuario = async (id) => {
 };
 
 export const inserta = async (usuario) => {
-
-    const { username, password_hash, id_persona } = usuario;
+    const { username, password_hash, id_persona, id_rol } = usuario;
 
     const [resultado] = await pool.query(
         `
-        INSERT INTO USUARIO
-        (username,password_hash,id_persona)
-        VALUES(?,?,?)
+        INSERT INTO usuario
+        (username, password_hash, id_persona, id_rol, estado)
+        VALUES(?, ?, ?, ?, 'A')
         `,
-        [username, password_hash, id_persona]
+        [username, password_hash, id_persona, id_rol || 1]
     );
 
     return {
@@ -59,17 +60,17 @@ export const inserta = async (usuario) => {
 };
 
 export const actualiza = async (id, usuario) => {
-
-    const { username, password_hash } = usuario;
+    const { username, password_hash, id_rol } = usuario;
 
     await pool.query(
         `
-        UPDATE USUARIO
-        SET username=?,
-            password_hash=?
-        WHERE id_usuario=?
+        UPDATE usuario
+        SET username = ?,
+            password_hash = COALESCE(?, password_hash),
+            id_rol = COALESCE(?, id_rol)
+        WHERE id_usuario = ?
         `,
-        [username, password_hash, id]
+        [username, password_hash || null, id_rol || null, id]
     );
 
     return {
@@ -79,12 +80,11 @@ export const actualiza = async (id, usuario) => {
 };
 
 export const elimina = async (id) => {
-
     await pool.query(
         `
-        UPDATE USUARIO
-        SET estado='I'
-        WHERE id_usuario=?
+        UPDATE usuario
+        SET estado = 'I'
+        WHERE id_usuario = ?
         `,
         [id]
     );

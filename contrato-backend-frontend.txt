@@ -1,0 +1,389 @@
+====================================================================
+CONTRATO FRONTEND <-> BACKEND
+Sistema Académico Universitario
+====================================================================
+Este documento describe, módulo por módulo, qué espera recibir y qué
+va a enviar el frontend (React + Vite + Axios). Se basa en las tablas
+de DDL-proy-v1.sql. Todas las fechas van en formato YYYY-MM-DD.
+Todas las respuestas de error usan el mismo formato:
+
+{
+  "exito": false,
+  "mensaje": "Descripción legible del error"
+}
+
+
+====================================================================
+MÓDULO 0: AUTENTICACIÓN
+====================================================================
+ACCIÓN: Iniciar sesión
+MÉTODO: POST
+ENDPOINT SUGERIDO: /api/auth/login
+
+=> JSON QUE EL FRONTEND ENVIARÁ (REQUEST):
+{
+  "username": "docente",
+  "password": "docente123"
+}
+
+=> JSON ESPERADO (RESPUESTA - CAMINO FELIZ):
+{
+  "exito": true,
+  "token": "eyJhbGciOi...",
+  "usuario": {
+    "id_usuario": 3,
+    "id_persona": 3,
+    "username": "docente",
+    "nombre_completo": "María Gómez Vargas",
+    "roles": ["DOCENTE"],
+    "id_estudiante": null,
+    "ru": null,
+    "id_docente": 3
+  }
+}
+
+=> DICCIONARIO DE DATOS:
+- token (String): JWT a incluir como Bearer en cada request posterior.
+- roles (Array<String>): uno o más de ADMIN, DIRECTOR, DOCENTE, ESTUDIANTE.
+  Un usuario puede tener varios (ej. Director que también es Docente,
+  ver tabla TIENE_ROL). El frontend usa este array para mostrar/ocultar
+  módulos del menú lateral y permite cambiar de "rol activo" si hay más de uno.
+- id_estudiante / ru: solo si el usuario tiene rol ESTUDIANTE (viene de tabla ESTUDIANTE).
+- id_docente: solo si tiene rol DOCENTE (viene de tabla DOCENTE).
+
+NOTA IMPORTANTE: el login NO debe mostrarse dentro del dashboard/layout
+con menú. Es una pantalla aparte; solo después de un login exitoso se
+navega al layout con sidebar. Todas las rutas del layout deben responder
+401 si el token es inválido o expiró, para que el frontend redirija a /login.
+
+
+====================================================================
+MÓDULO 1: USUARIOS Y ROLES (Panel Administrador)
+====================================================================
+ACCIÓN: Listar usuarios
+MÉTODO: GET
+ENDPOINT: /api/usuarios
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "datos": [
+    {
+      "id_usuario": 5,
+      "username": "estudiante",
+      "activo": true,
+      "persona": { "nombres": "Juan", "apellidos": "Pérez Ramos", "ci": "1234567", "email": "juan.perez@uni.edu.bo" },
+      "roles": [4]
+    }
+  ]
+}
+
+----------------------------------------------------------------
+ACCIÓN: Crear usuario (con persona y roles en la misma transacción)
+MÉTODO: POST
+ENDPOINT: /api/usuarios
+
+=> REQUEST:
+{
+  "username": "nuevo.docente",
+  "password": "clave123",
+  "persona": {
+    "nombres": "Pedro",
+    "apellidos": "Choque",
+    "ci": "7777777",
+    "email": "pedro.choque@uni.edu.bo",
+    "fecha_nac": "1990-03-11",
+    "sexo": "M"
+  },
+  "idsRol": [3]
+}
+
+- El backend crea PERSONA, luego USUARIO (contraseña con bcrypt) y las filas en TIENE_ROL.
+- Si idsRol incluye el rol Estudiante o Docente, avisar que falta crear el registro
+  correspondiente en ESTUDIANTE/DOCENTE (o el backend puede pedir esos campos también).
+
+----------------------------------------------------------------
+ACCIÓN: Activar/Desactivar usuario (borrado lógico, columna activo)
+MÉTODO: PATCH
+ENDPOINT: /api/usuarios/{id_usuario}/estado
+REQUEST: { "activo": false }
+
+
+====================================================================
+MÓDULO 2: OFERTA ACADÉMICA (por mención/carrera, gestión y semestre)
+====================================================================
+ACCIÓN: Obtener pensum de una carrera con el estado de cada materia
+         para el estudiante autenticado (para pintar verde/amarillo/rojo/azul)
+MÉTODO: GET
+ENDPOINT: /api/oferta-academica/{id_carrera}?id_gestion=3
+
+CONTEXTO FRONTEND:
+Pantalla de Oferta Académica. El estudiante elige carrera y gestión,
+y se pinta cada materia según su historial:
+- VERDE  = Aprobada (existe DETALLE_INSCRIPCION con estado Aprobado)
+- AMARILLO = Cursando (estado Inscrito en la gestión seleccionada)
+- ROJO = Reprobada (última vez que la cursó, estado Reprobado, y no la aprobó después)
+- AZUL = Pendiente (nunca la cursó)
+Si el usuario NO es estudiante (admin/director/docente), el backend
+puede omitir el campo "estado_estudiante" y el frontend mostrará
+las materias en un color neutro.
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "carrera": { "id_carrera": 1, "nombre": "Ingeniería de Sistemas" },
+  "plan": { "id_plan": 1, "nombre": "Plan 2022" },
+  "pensum": [
+    {
+      "semestre": 1,
+      "materias": [
+        {
+          "id_materia": 1,
+          "sigla": "INF-101",
+          "nombre": "Introducción a la Programación",
+          "creditos": 5,
+          "estado_estudiante": "aprobada",
+          "cantidad_paralelos": 2
+        }
+      ]
+    }
+  ]
+}
+
+- estado_estudiante (String|null): "aprobada" | "cursando" | "reprobada" | "pendiente" | null.
+
+----------------------------------------------------------------
+ACCIÓN: Listar paralelos ofertados de una materia en una gestión
+MÉTODO: GET
+ENDPOINT: /api/materias/{id_materia}/paralelos?id_gestion=3
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "materia": { "sigla": "INF-161", "nombre": "Diseño y Administración de Bases de Datos" },
+  "paralelos": [
+    {
+      "id_paralelo": 2,
+      "nombre_paralelo": "B",
+      "cupo_disponible": 5,
+      "docente": "Rodrigo Fernández Loza",
+      "horario": { "dia": "Miércoles", "hora_inicio": "10:00", "hora_fin": "12:00" },
+      "aula": "Lab A"
+    }
+  ]
+}
+- cupo_disponible = cupo_maximo - cupo_actual (ya restado por el backend).
+
+
+====================================================================
+MÓDULO 3: INSCRIPCIONES
+====================================================================
+ACCIÓN: Ver mis inscripciones (vista Estudiante) de la gestión activa
+MÉTODO: GET
+ENDPOINT: /api/inscripciones/mias?id_gestion=3
+
+ACCIÓN: Inscribirse a un paralelo (vista Estudiante)
+MÉTODO: POST
+ENDPOINT: /api/inscripciones
+
+=> REQUEST:
+{ "id_materia": 6, "id_paralelo": 2, "id_gestion": 3 }
+
+REGLAS QUE DEBE VALIDAR EL BACKEND (el frontend ya valida en el cliente,
+pero la validación real y definitiva debe vivir en el backend):
+1. La materia debe pertenecer al plan de estudio del estudiante.
+2. Si la materia tiene filas en PREREQUISITO, el estudiante debe tener
+   un DETALLE_INSCRIPCION con estado "Aprobado" para CADA id_materia_req.
+   Si falta alguna, responder 400 con mensaje indicando qué materia(s) le faltan.
+3. El paralelo debe tener cupo_actual < cupo_maximo (si no, 409 "Sin cupo").
+4. No permitir doble inscripción a la misma materia en la misma gestión
+   si ya tiene un registro con estado "Inscrito" o "Aprobado".
+Al inscribir con éxito, incrementar cupo_actual del paralelo en 1.
+
+=> RESPUESTA DE ERROR (ejemplo prerrequisito):
+{
+  "exito": false,
+  "mensaje": "Debe aprobar primero: INF-102, INF-151"
+}
+
+----------------------------------------------------------------
+ACCIÓN: Retirar una inscripción (Estudiante retira su propia materia
+         "Inscrito", o Administrativo retira cualquiera)
+MÉTODO: DELETE
+ENDPOINT: /api/inscripciones/detalle/{id_detalle}
+
+----------------------------------------------------------------
+ACCIÓN: Listar TODAS las inscripciones de una gestión (vista Administrativo)
+MÉTODO: GET
+ENDPOINT: /api/inscripciones?id_gestion=3
+Devuelve todos los estudiantes con sus materias inscritas en esa gestión.
+El administrativo puede modificar libremente (a diferencia del estudiante).
+
+----------------------------------------------------------------
+ACCIÓN: Actualizar estado/nota de un detalle de inscripción (solo Admin)
+MÉTODO: PATCH
+ENDPOINT: /api/inscripciones/detalle/{id_detalle}
+REQUEST: { "estado": "Abandono" }
+
+
+====================================================================
+MÓDULO 4: NOTAS Y PONDERACIONES
+====================================================================
+ACCIÓN: Ver/crear criterios de evaluación de un paralelo (vista Docente)
+MÉTODO: GET  /api/paralelos/{id_materia}/{id_paralelo}/criterios
+MÉTODO: POST /api/paralelos/{id_materia}/{id_paralelo}/criterios
+
+=> REQUEST (POST):
+{ "nombre": "1er Parcial", "ponderacion": 30 }
+
+REGLA: la suma de "ponderacion" de todos los criterios de un mismo
+paralelo NO debe superar 100. El backend debe rechazar (400) si se excede.
+Cada docente define sus propios criterios; pueden ser distintos entre
+paralelos de la misma materia (cada docente elige cómo evaluar).
+
+----------------------------------------------------------------
+ACCIÓN: Eliminar un criterio
+MÉTODO: DELETE /api/criterios/{id_criterio}
+(Debe eliminar también las NOTA asociadas a ese criterio, o rechazar
+si ya hubo cierre de gestión.)
+
+----------------------------------------------------------------
+ACCIÓN: Registrar/actualizar el puntaje de un estudiante en un criterio
+MÉTODO: POST
+ENDPOINT: /api/notas
+
+=> REQUEST:
+{ "id_detalle": 5, "id_criterio": 1, "puntaje_obtenido": 25 }
+
+El backend hace upsert (si ya existe NOTA para ese id_detalle+id_criterio,
+la actualiza; si no, la crea). No permitir si la gestión ya está cerrada.
+
+----------------------------------------------------------------
+ACCIÓN: Ver mis notas (vista Estudiante), agrupadas por materia/gestión
+MÉTODO: GET /api/notas/mias
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "datos": [
+    {
+      "id_detalle": 5,
+      "materia": { "sigla": "INF-161", "nombre": "Diseño y Administración de Bases de Datos" },
+      "gestion": "I/2026",
+      "estado": "Inscrito",
+      "criterios": [
+        { "nombre": "1er Parcial", "ponderacion": 30, "puntaje_obtenido": 25 },
+        { "nombre": "2do Parcial", "ponderacion": 30, "puntaje_obtenido": 22 }
+      ],
+      "nota_proyectada": 15.67
+    }
+  ]
+}
+- nota_proyectada (Number): suma de (puntaje_obtenido * ponderacion / 100)
+  de los criterios ya calificados; solo aplica mientras estado="Inscrito".
+
+
+====================================================================
+MÓDULO 5: HISTORIAL ACADÉMICO
+====================================================================
+ACCIÓN: Historial académico de un estudiante
+MÉTODO: GET
+ENDPOINT: /api/estudiantes/{id_estudiante}/historial
+
+PERMISOS:
+- ESTUDIANTE: solo puede pedir su propio id_estudiante (backend valida
+  contra el token; si intenta pedir el de otro, responder 403).
+- ADMIN / DIRECTOR: pueden pedir el historial de cualquier estudiante.
+- DOCENTE: no tiene acceso a este endpoint salvo que también sea Director.
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "estudiante": { "nombre_completo": "Juan Pérez Ramos", "ru": "20210458", "anio_ingreso": 2021 },
+  "promedio_general": 71.5,
+  "historial": [
+    { "gestion": "I/2025", "materia": "INF-101 - Introducción a la Programación", "estado": "Aprobado", "nota_final": 78 }
+  ]
+}
+
+
+====================================================================
+MÓDULO 6: REPORTES Y ESTADÍSTICAS (PDF y datos para gráficos)
+====================================================================
+El frontend genera los PDF en el cliente (jsPDF), así que estos
+endpoints solo necesitan devolver JSON; no hace falta que el backend
+genere PDF binario.
+
+ACCIÓN: Estudiantes inscritos por carrera
+MÉTODO: GET /api/reportes/estudiantes-por-carrera/{id_carrera}
+=> RESPUESTA:
+{
+  "exito": true,
+  "carrera": "Ingeniería de Sistemas",
+  "datos": [
+    { "ru": "20210458", "nombre": "Juan Pérez Ramos", "anio_ingreso": 2021, "cursando": 1, "promedio": 71.5 }
+  ]
+}
+
+ACCIÓN: Carga horaria / carga académica por docente en la gestión activa
+MÉTODO: GET /api/reportes/carga-docente?id_gestion=3
+=> RESPUESTA:
+{
+  "exito": true,
+  "datos": [
+    { "docente": "Rodrigo Fernández Loza", "grado_academico": "Ph.D.", "paralelos": 2, "total_estudiantes": 45 }
+  ]
+}
+
+ACCIÓN: Rendimiento académico general (histórico, todas las gestiones)
+MÉTODO: GET /api/reportes/rendimiento-academico
+=> RESPUESTA:
+{
+  "exito": true,
+  "datos": [
+    { "materia": "INF-101", "aprobados": 20, "reprobados": 5, "cursando": 3, "porcentaje_aprobacion": 80 }
+  ]
+}
+
+
+====================================================================
+MÓDULO 7: CIERRE DE GESTIÓN
+====================================================================
+ACCIÓN: Previsualizar el cierre (calcular notas finales sin aplicar cambios)
+MÉTODO: GET
+ENDPOINT: /api/gestiones/{id_gestion}/cierre/preview
+
+=> RESPUESTA:
+{
+  "exito": true,
+  "periodo": "I/2026",
+  "resumen": { "total": 40, "aprobados": 28, "reprobados": 12 },
+  "detalle": [
+    { "estudiante": "Juan Pérez Ramos", "ru": "20210458", "materia": "INF-161", "nota_final_proyectada": 76, "estado_proyectado": "Aprobado" }
+  ]
+}
+
+----------------------------------------------------------------
+ACCIÓN: Confirmar y ejecutar el cierre de gestión
+MÉTODO: POST
+ENDPOINT: /api/gestiones/{id_gestion}/cierre
+
+LÓGICA QUE DEBE EJECUTAR EL BACKEND (transacción única):
+1. Para cada DETALLE_INSCRIPCION con estado "Inscrito" perteneciente
+   a esta gestión: calcular nota_final = suma(puntaje_obtenido * ponderacion / 100)
+   de sus CRITERIO_EVALUACION.
+2. Si nota_final >= 51 -> estado = "Aprobado"; si no -> "Reprobado".
+3. Guardar nota_final y estado en DETALLE_INSCRIPCION.
+4. Cambiar GESTION.estado a "Cerrada" (columna adicional sugerida sobre
+   la tabla GESTION del DDL, o manejarlo con una tabla de control aparte).
+5. A partir de este punto, /api/notas debe rechazar cualquier POST
+   que apunte a un id_detalle de una gestión cerrada.
+6. Responder con el mismo resumen del preview para que el frontend
+   pueda generar el PDF del acta de cierre.
+
+NOTA DE DISEÑO: el DDL actual no tiene columna "estado" en GESTION.
+Se sugiere agregar `estado varchar(10) NOT NULL DEFAULT 'Activa' CHECK (estado IN ('Activa','Cerrada'))`
+a la tabla GESTION para soportar este módulo.
+====================================================================
+FIN DEL DOCUMENTO
+====================================================================
