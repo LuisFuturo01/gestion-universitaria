@@ -612,16 +612,11 @@ input:focus, select:focus, textarea:focus {
   color: #581c87 !important;
 }
 
-.materia-optativa-generica, .legend-chip.materia-optativa-generica {
+
+.materia-optativa, .legend-chip.materia-optativa {
   background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
   border-color: #f59e0b !important;
   color: #78350f !important;
-}
-
-.materia-optativa, .legend-chip.materia-optativa {
-  background: linear-gradient(135deg, #e0f2fe, #bae6fd) !important;
-  border-color: #0284c7 !important;
-  color: #0c4a6e !important;
 }
 
 .materia-corriente, .legend-chip.materia-corriente {
@@ -642,8 +637,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .tipo-tag.materia-tecnico { background: #7e22ce !important; color: #ffffff !important; }
-.tipo-tag.materia-optativa-generica { background: #d97706 !important; color: #ffffff !important; }
-.tipo-tag.materia-optativa { background: #0284c7 !important; color: #ffffff !important; }
+.tipo-tag.materia-optativa { background: #d97706 !important; color: #ffffff !important;  }
 .tipo-tag.materia-corriente { background: #1d4ed8 !important; color: #ffffff !important; }
 
 /* SOBRESCRITURA PARA ESTADO ESTUDIANTIL */

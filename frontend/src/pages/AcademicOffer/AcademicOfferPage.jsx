@@ -10,11 +10,7 @@ export const getTipoMateria = (sigla = "", nombre = "") => {
     return "Técnico Superior";
   }
   
-  if (nombre.startsWith("Electiva ")) {
-    return "Optativa Genérica";
-  }
-  
-  if (/-3[123]/.test(sigla) || /^(PER|AUD|RRPP)-E/.test(sigla)) {
+  if (nombre.startsWith("Electiva ") || /-3[123]/.test(sigla) || /^(PER|AUD|RRPP)-E/.test(sigla)) {
     return "Optativa";
   }
   
@@ -23,7 +19,6 @@ export const getTipoMateria = (sigla = "", nombre = "") => {
 
 const TIPO_MATERIA_STYLES = {
   "Técnico Superior": { clase: "materia-tecnico", label: "Técnico Superior" },
-  "Optativa Genérica": { clase: "materia-optativa-generica", label: "Optativa Genérica" },
   "Optativa": { clase: "materia-optativa", label: "Optativa" },
   "Corriente": { clase: "materia-corriente", label: "Corriente" },
 };
@@ -52,7 +47,7 @@ export default function AcademicOfferPage() {
 
   const pensumCompleto = useMemo(() => (planActual ? data.getPensumPlan(planActual.id_plan) : []), [planActual, data]);
 
-  // Clasificación de materias del pensum incorporando tipo_materia
+  // Clasificación de materias del pensum incorporando tipo_materia (Técnico Superior, Optativa, Corriente)
   const pensumClasificado = useMemo(() => {
     return pensumCompleto.map((pm) => ({
       ...pm,
@@ -123,8 +118,7 @@ export default function AcademicOfferPage() {
         <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#7c8ba3", alignSelf: "center", marginRight: 6 }}>Tipos de Asignatura:</span>
         <span className="legend-chip materia-corriente">📘 Corriente</span>
         <span className="legend-chip materia-tecnico">🟣 Técnico Superior</span>
-        <span className="legend-chip materia-optativa-generica">📙 Optativa Genérica</span>
-        <span className="legend-chip materia-optativa">🔷 Optativa</span>
+        <span className="legend-chip materia-optativa">📙 Optativa</span>
       </div>
 
       {esEstudiante && (
