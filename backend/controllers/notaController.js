@@ -1,5 +1,15 @@
 import * as notaModel from '../models/notaModel.js';
 
+// Obtener TODAS las notas (carga global)
+export const getTodasNotas = async (req, res) => {
+    try {
+        const notas = await notaModel.obtenerTodas();
+        res.status(200).json(notas);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener todas las notas' });
+    }
+};
+
 export const crearNota = async (req, res) => {
     try {
         const { id_detalle, id_criterio, nota_obtenida, puntaje_obtenido } = req.body;

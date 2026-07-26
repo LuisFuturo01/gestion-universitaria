@@ -1,0 +1,74 @@
+- revisar que no existan dos o mas materias en el mismo aula al mismo horario
+
+
+Empecemos con 
+- AULA
+    reinicia los datos, te doy contexto hay 3 lugares donde se pasan clases, edificio informatica, edificio antiguo, pabellones a..g, los pabellones son gigantes deben entrar 250 personas aproximadamente, en el edificio informatica hay 5 pisos + subsuelo + planta baja, en nombre son los codigos de aula, por ejemplo en subsuelo es ss-a1..ss-a4, despues en los pisos hay unos 6 aulas apriximado de los pisos 1...5, sus codigos son algo asi como P1-A1 que llegaria a ser piso1 aula1, en el piso 3 no varia el codigo no es P3-A1 sino va de P3-lab1...P3-lab5, eso nomas, en el piso 4 hay P4-Lab1...P4-Lab3, y 3 aulas que mantiene P4-A1..P4-A3, la planta baja tiene 3 aulas donde entran 80 personas, su codigo es PB-A1...PB-A3 en el edificion antiguo tienen 2 pisos p1 y p2,, estos se manejan AULA 04-02-09, el 04 es constante, el 02 puede ser 01 es el piso en el que se encuentra, y el 09 es la cantidad de aula en el piso, en total hay 9 aulas por piso, entonces asi es el codigo, la capacidad en laboratorios baja a 150, los aulas a 100 en el edificio informatica, y en el edificio antiguo a 150 en capacidad, despues hay otro bloque con dos aulas estilo laboratorio, tiene codigo LASIN 1 Y LASIN 2, ambas son en el unico piso planta baja pb con capacidad de 100 personas, su ubicacion se llama LASINs
+
+    dicho esto ya tienes que el id es autoincrement no lo tocas, nombre es el codigo de aula, piso ya sabes como se obtiene mediante el codigo, ubicacion en que edificio esta en el texto que te acabo de pasar, la capacidad ya te indique tambien, recuerda cuando des codigos, las materias de informatica que usan computadoras o ciencias de la comunicacion que uses computadoras necesariamente, entonces se les asigana aulas como los laboratorios o los lasin, si son mas teoricas los aulas normales, y si es mas matematica, normalmente se asigna los pabellones
+
+- CARRERA
+    aca esta bien, mantienes informatica y ciencias de la comunicacion, no lo toques
+
+- GESTION
+    aca hay 3 gestiones por año, verano/2026, I/2026, invierno/2026 II/2026, son basicamente distribuidas verano en enero, febrero a junio en primer semestre I/2026, invierno en julio, agosto a diciembre en segundo semestre II/2026, entonces considera eso, no todo puede estar activo, el default es inactivo, abierto cuando esta en la epoca y cerrado cuando concluyo el periodo del cierre de gestion
+
+- HORARIO
+    las clases en semestre son de 2 horas por materia, empieza 8:00 y acaba 20:00 la ultima, no hay descansos, en los de temporada que son verano e invierno las clases son de 4 horas, 8-12, 12-16, 16-20, no puede haber dos materias en el mismo aula en el mismo horario, no puede haber el mismo docente en el mismo horario en diferentes aulas, un alumno si puede tener dos materias en el mismo horario, seria problema del alumno, pero si es posible pasar asi
+    
+- MATERIA
+    ya esta esto, con sus respectivos codigos, tampoco lo toques es por materia, cada materia tiene sus prerrequisitos, no puede pasar alguien que no tenga los prerrequisitos, la carga horaria normalmente es 40 horas, asi que ahi se queda, y va deacuerdo al plan de estudio
+
+- PLAN_ESTUDIO
+    aca, es por meciones de las carreras, ya esta implementado con sus datos, no lo toques
+
+- PLAN MATERIA
+    es la relacion de correspondencia, entre materias a la mencion correspondiente dentro de las carreras, aca se especifica a que semestre pertenece las materias por mencion
+
+- PREREQUISITO
+    aca solo es materias id, para identificar los requisitos que tiene que cumplir un estudiante para pasar una materia, en el caso de que no tenga esa materia, se puede pasar
+
+- ROL
+    aca solo hay 4 roles constantes, administrador, director, docente, estudiante, el director es si o si docente, asi es tiene lo mismo del docente, y cosas extra por ser director
+
+- PERSONA
+    aca hay algunos datos ejemplo, tienes que agregar datos, pero casi reales, que no sea tan inventado, el email tiene formato @fcpn.edu.bo, hay que validar esto, el estado es activo o inactivo
+
+- USUARIO
+    aca se relacionan con persona, la contrasenia es alfanumerico, es una persona solo tiene un unico usuario, es 1:1, el estado del usuario es activo o inactivo, no puede haber 2 usuarios activos para la misma persona, y el usuario es la llave principal de esta tabla para hacer login
+
+- ESTUDIANTE
+    tiene un ru unico que va desde 1006000 para adelante, depende el orden de inscripcion se le asigna el consecutivo, es como un ci pero identificador de la facultad, anio_ingreso se le regista I/anio o II/anio, en activo empieza, no puede ingresar en verano o invierno
+
+- DOCENTE
+    por defecto todos entran con grado lic. pero si se especifica puede ser msc. o dr. u otros, registro docente es algo como el RU igual empieza de 1015648 para adelante consecutivo por docente agregado
+
+- ADMINISTRATIVO
+    solo tiene item que por defecto es null, pero se puede agregar el codigo de item, ejemplo 101205 o algo asi, despues una foranea indicando de que carrera es administrador, este actua como (KARDEX) se le conoce en la facultad
+
+- DIRECTOR_CARRERA
+    este es docente, sigue dando clases, pero puede ver mas cosas estilo administrador, puede reasignar administradores, etc
+
+- DIRECTOR_CARRERA_ASIGNACION
+    aca es la relacion donde se indica que director esta a cargo de que carrera, solo hay un director por carrera en cierto tiempo, esto se hace por elecciones, tiene atributo gestion, cuando se registra se pone por ejemplo '2026-2028', cada director dura 2 años, y puede ser reelegido, pero ya como otro registro diferente
+
+- PARALELO
+    aca el paralelo es A...Z, normalmente son 2 paralelos por materia, pero puede ser solo uno o mas, depende si hay muchos estudiantes con la posibilidad de tomar la materia, el cupo maximo depende del tamaño de aula a la que fue asignado en la relacion se_cursa, y este es por gestion, cada semestre o temporada se abren mas o menos paralelos
+
+- INSCRIPCION
+    aca el estudiante se registar en una fecha en cierta gestion, el minimo de inscripcion por semestres es 0, el maximo es 6, ahora en temporada lo propio el minimo es 0 el maximo es 2, tiene que estar activo la gestion para inscribirse
+
+- DETALLE_INSCRIPCION
+    aca se ve en estado del inscrito, reprobado, aprobado, cursando, retirado, puede desertar si o si tiene que estar activo la gestion para inscribirse
+
+- CRITERIOS_EVALUACION
+    aca de cada paralelo asignado con un docente, se pone por ejemplo 1erPar, 2doPar, proyecto, etc, lo que el docente quiera sin superar los 100pts, pone la ponderacion de cada criterio, con su nombre, ademas de su foranea de a que paralelo pertenece
+
+- NOTA
+    este responde a criterio, es la nota que el inscrito saca con respecto a cada criterio planteado por el docente, no puede exceder mas de 100pts, si o si necesita nota en todos los criterios, puede ser 0 pero no nulo, ahora puede ser nulo, si es que en detalle esta en estado abandono
+
+- SE_CURSA
+    aca se relaciona el paralelo, en que aula le toco y en que horario, como te dije, no puede haber 2 paralelos en la misma gestion, que esten mismo aula y mismo horario juntos, tienes que validar esto cuando se inserte 
+
+- AUDITORIA
+    aca, debes agregar la columna tipo, para saber si es insert, update, delete, la fecha, hora en sus atributos respectivos, accion a detalle ejemplo actualizacion de nota para el usuario 1 de 85 a 95, el id_usuario es el usuario que hizo la accion puede ser el id del docente en este ejemplo

@@ -1,5 +1,10 @@
 import { pool } from '../config/db.js';
 
+// Obtener TODAS las notas (carga global inicial del frontend)
+export const obtenerTodas = async () => {
+    const [rows] = await pool.query('SELECT id_nota, id_detalle, id_criterio, nota_obtenida FROM nota');
+    return rows;
+};
 export const crear = async (id_detalle, id_criterio, nota_obtenida) => {
     const [result] = await pool.query(
         'CALL sp_crear_nota(?, ?, ?)', 

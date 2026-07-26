@@ -57,9 +57,17 @@ export const enrollmentService = {
 
 export const gradesService = {
   criterios: (id_materia, id_paralelo) => apiClient.get(`/criterios/${id_materia}/${id_paralelo}`),
+  todosCriterios: () => apiClient.get("/criterios"),
   crearCriterio: (payload) => apiClient.post("/criterios", payload),
   actualizarCriterio: (id_criterio, payload) => apiClient.put(`/criterios/${id_criterio}`, payload),
   eliminarCriterio: (id_criterio) => apiClient.delete(`/criterios/${id_criterio}`),
   guardarNota: (payload) => apiClient.post("/notas", payload),
   notasPorDetalle: (id_detalle) => apiClient.get(`/notas/${id_detalle}`),
+  todasNotas: () => apiClient.get("/notas"),
+};
+
+export const gestionCloseService = {
+  preview: (id_gestion) => apiClient.get(`/gestiones/${id_gestion}/preview-cierre`),
+  cerrar: (id_gestion) => apiClient.post(`/gestiones/${id_gestion}/cerrar`),
+  auditoria: () => apiClient.get("/gestiones/auditoria"),
 };

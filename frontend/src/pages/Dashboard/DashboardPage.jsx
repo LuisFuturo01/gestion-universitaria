@@ -12,12 +12,7 @@ export default function DashboardPage() {
   if (rol === "ADMIN") {
     const usuariosActivos = data.usuarios.filter((u) => u.estado === "A" || u.activo !== false).length;
     const totalParalelos = data.paralelos.length;
-    const loginsRecientes = [
-      { usuario: "admin", ip: "192.168.1.10", hora: "Hace 5 minutos", estado: "Exitoso" },
-      { usuario: "director", ip: "192.168.1.14", hora: "Hace 22 minutos", estado: "Exitoso" },
-      { usuario: "docente", ip: "192.168.1.20", hora: "Hace 1 hora", estado: "Exitoso" },
-      { usuario: "estudiante", ip: "192.168.1.45", hora: "Hace 2 horas", estado: "Exitoso" },
-    ];
+    const registrosAuditoria = data.auditoria || [];
 
     return (
       <div>
@@ -26,24 +21,28 @@ export default function DashboardPage() {
           <StatCard icon="🟢" label="Salud del sistema" value="100% Operativo" tone="green" />
           <StatCard icon="🔑" label="Usuarios activos" value={usuariosActivos} tone="blue" />
           <StatCard icon="📚" label="Paralelos registrados" value={totalParalelos} tone="purple" />
-          <StatCard icon="🛡️" label="Errores de sistema" value="0 detectados" tone="yellow" />
+          <StatCard icon="📋" label="Registros de auditoría" value={registrosAuditoria.length} tone="yellow" />
         </div>
 
         <div className="page-card" style={{ marginTop: 20 }}>
-          <SectionHeader title="Logins recientes y actividad de soporte" />
-          <table className="table">
-            <thead><tr><th>Usuario</th><th>Dirección IP</th><th>Hora</th><th>Estado</th></tr></thead>
-            <tbody>
-              {loginsRecientes.map((l, i) => (
-                <tr key={i}>
-                  <td><strong>{l.usuario}</strong></td>
-                  <td>{l.ip}</td>
-                  <td>{l.hora}</td>
-                  <td><Badge>{l.estado}</Badge></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SectionHeader title="Auditoría del sistema (tabla auditoria — MySQL)" />
+          {registrosAuditoria.length === 0 ? (
+            <p className="empty-state">No hay registros de auditoría en la base de datos.</p>
+          ) : (
+            <table className="table">
+              <thead><tr><th>Usuario</th><th>Acción</th><th>Fecha</th><th>Hora</th></tr></thead>
+              <tbody>
+                {registrosAuditoria.slice(0, 20).map((a, i) => (
+                  <tr key={a.id_auditoria || i}>
+                    <td><strong>{a.username || `ID: ${a.id_usuario}`}</strong></td>
+                    <td>{a.accion}</td>
+                    <td>{a.fecha ? new Date(a.fecha).toLocaleDateString() : "—"}</td>
+                    <td>{a.hora || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     );

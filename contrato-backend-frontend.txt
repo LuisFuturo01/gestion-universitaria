@@ -34,7 +34,7 @@ ENDPOINT SUGERIDO: /api/auth/login
     "id_usuario": 3,
     "id_persona": 3,
     "username": "docente",
-    "nombre_completo": "María Gómez Vargas",
+    "nombre_completo": "María Gómez",
     "roles": ["DOCENTE"],
     "id_estudiante": null,
     "ru": null,

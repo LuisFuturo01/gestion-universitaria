@@ -3,6 +3,7 @@ import * as criterioController from '../controllers/criterioEvaluacionController
 
 const router = express.Router();
 
+router.get('/', criterioController.getTodosCriterios);
 router.post('/', criterioController.crearCriterio);
 router.get('/:id_materia/:id_paralelo', criterioController.getCriteriosParalelo);
 router.put('/:id_criterio', criterioController.actualizarCriterio);

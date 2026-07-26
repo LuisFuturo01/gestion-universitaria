@@ -1,5 +1,10 @@
 import { pool } from '../config/db.js';
 
+// Obtener TODOS los criterios (carga global inicial del frontend)
+export const obtenerTodos = async () => {
+    const [rows] = await pool.query('SELECT id_criterio, id_materia, id_paralelo, nombre, ponderacion FROM criterio_evaluacion');
+    return rows;
+};
 export const crear = async (id_materia, id_paralelo, nombre, ponderacion) => {
     const [result] = await pool.query(
         'CALL sp_crear_criterio(?, ?, ?, ?)', 

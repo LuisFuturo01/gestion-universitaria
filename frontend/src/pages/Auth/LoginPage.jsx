@@ -3,10 +3,10 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 const DEMO_USERS = [
-  { rol: "Administrador", usuario: "admin", clave: "admin123" },
-  { rol: "Director de Carrera", usuario: "director", clave: "director123" },
-  { rol: "Docente", usuario: "docente", clave: "docente123" },
-  { rol: "Estudiante", usuario: "estudiante", clave: "estudiante123" },
+  { rol: "Administrador", usuario: "cmendozaq", clave: "123456", detalle: "Carlos Andrés Mendoza Quispe" },
+  { rol: "Director de Carrera", usuario: "mrflores", clave: "123456", detalle: "Manuel Ramiro Flores" },
+  { rol: "Docente", usuario: "fmamania", clave: "123456", detalle: "Francisco Mamani Apaza" },
+  { rol: "Estudiante", usuario: "lzeballosq", clave: "123456", detalle: "Luis Alejandro Zeballos Quiroz" },
 ];
 
 export default function LoginPage() {
@@ -100,6 +100,7 @@ export default function LoginPage() {
               >
                 <strong>{u.rol}</strong>
                 <span>{u.usuario} / {u.clave}</span>
+                {u.detalle && <small style={{ display: "block", fontSize: "0.72rem", opacity: 0.85, marginTop: 2 }}>{u.detalle}</small>}
               </button>
             ))}
           </div>

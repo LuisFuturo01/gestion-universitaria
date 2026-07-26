@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { catalogService, enrollmentService, gradesService, usersService } from "../services/api";
+import { catalogService, enrollmentService, gradesService, usersService, gestionCloseService } from "../services/api";
 import { NOTA_APROBACION, fullName } from "../data/mockData";
 
 const DataContext = createContext(null);
@@ -27,6 +27,7 @@ export function DataProvider({ children }) {
   const [detalle, setDetalle] = useState([]);
   const [criterios, setCriterios] = useState([]);
   const [notas, setNotas] = useState([]);
+  const [auditoria, setAuditoria] = useState([]);
   const [loadingBackend, setLoadingBackend] = useState(true);
 
   // Carrera activa seleccionada para el ámbito de Administración / Dirección
@@ -53,6 +54,9 @@ export function DataProvider({ children }) {
         resRoles,
         resEstudiantes,
         resDocentes,
+        resCriterios,
+        resNotas,
+        resAuditoria,
       ] = await Promise.allSettled([
         catalogService.carreras(),
         catalogService.planes(),
@@ -70,6 +74,9 @@ export function DataProvider({ children }) {
         catalogService.roles(),
         catalogService.estudiantes(),
         catalogService.docentes(),
+        gradesService.todosCriterios(),
+        gradesService.todasNotas(),
+        gestionCloseService.auditoria(),
       ]);
 
       if (resCarreras.status === "fulfilled" && Array.isArray(resCarreras.value.data) && resCarreras.value.data.length > 0) {
@@ -137,6 +144,21 @@ export function DataProvider({ children }) {
 
       if (resDocentes.status === "fulfilled" && Array.isArray(resDocentes.value.data)) {
         setDocentes(resDocentes.value.data);
+      }
+
+      // Cargar criterios de evaluación (carga global)
+      if (resCriterios.status === "fulfilled" && Array.isArray(resCriterios.value.data)) {
+        setCriterios(resCriterios.value.data);
+      }
+
+      // Cargar notas (carga global)
+      if (resNotas.status === "fulfilled" && Array.isArray(resNotas.value.data)) {
+        setNotas(resNotas.value.data);
+      }
+
+      // Cargar auditoría
+      if (resAuditoria.status === "fulfilled" && Array.isArray(resAuditoria.value.data)) {
+        setAuditoria(resAuditoria.value.data);
       }
 
       if (resInscripciones.status === "fulfilled" && Array.isArray(resInscripciones.value.data)) {
@@ -348,20 +370,17 @@ export function DataProvider({ children }) {
     return Math.round(totalPonderado * 100) / 100;
   };
 
-  const cerrarGestion = (id_gestion) => {
-    const insIds = inscripciones.filter((i) => i.id_gestion === id_gestion).map((i) => i.id_inscripcion);
-    setDetalle((prev) =>
-      prev.map((d) => {
-        if (!insIds.includes(d.id_inscripcion) || d.estado !== "Inscrito") return d;
-        const notaFinal = calcularNotaFinal(d.id_materia, d.id_paralelo, d.id_detalle);
-        return {
-          ...d,
-          nota_final: notaFinal,
-          estado: notaFinal >= NOTA_APROBACION ? "Aprobado" : "Reprobado",
-        };
-      })
-    );
-    setGestiones((prev) => prev.map((g) => (g.id_gestion === id_gestion ? { ...g, estado: "Cerrada" } : g)));
+  // Previsualización del cierre — llama a sp_preview_cierre_gestion vía API
+  const previewCierreGestion = async (id_gestion) => {
+    const res = await gestionCloseService.preview(id_gestion);
+    return res.data; // { resumen: {...}, detalle: [...] }
+  };
+
+  // Cierre definitivo — llama a sp_cerrar_gestion vía API (transacción en MySQL)
+  const cerrarGestion = async (id_gestion) => {
+    const res = await gestionCloseService.cerrar(id_gestion);
+    await reloadFromBackend(); // Recargar todo después del cierre
+    return res.data;
   };
 
   const value = useMemo(
@@ -381,6 +400,7 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
+      auditoria,
       idCarreraActiva,
       setIdCarreraActiva,
       getCarrera,
@@ -409,6 +429,7 @@ export function DataProvider({ children }) {
       eliminarCriterio,
       guardarNota,
       calcularNotaFinal,
+      previewCierreGestion,
       cerrarGestion,
     }),
     [
@@ -425,6 +446,7 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
+      auditoria,
       idCarreraActiva,
       estudiantesCalculados,
       docentesCalculados,

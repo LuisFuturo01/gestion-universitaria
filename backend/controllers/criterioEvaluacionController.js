@@ -1,5 +1,15 @@
 import * as criterioModel from '../models/criterioEvaluacionModel.js';
 
+// Obtener TODOS los criterios (carga global)
+export const getTodosCriterios = async (req, res) => {
+    try {
+        const criterios = await criterioModel.obtenerTodos();
+        res.status(200).json(criterios);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener todos los criterios' });
+    }
+};
+
 export const crearCriterio = async (req, res) => {
     try {
         const { id_materia, id_paralelo, nombre, ponderacion } = req.body;

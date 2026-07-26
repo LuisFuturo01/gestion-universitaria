@@ -39,10 +39,10 @@ const seedDatabase = async () => {
 
         console.log("--> Insertando Personas...");
         const personas = [
-            [1, "1111111", "Ana", "Mamani Quispe", "1985-02-10", "F", "admin@uni.edu.bo", "A"],
-            [2, "2222222", "Carlos", "Condori Ramos", "1980-05-15", "M", "director@uni.edu.bo", "A"],
-            [3, "3333333", "María", "Gómez Vargas", "1988-09-20", "F", "docente@uni.edu.bo", "A"],
-            [4, "4444444", "Juan", "Pérez Ramos", "2002-11-03", "M", "estudiante@uni.edu.bo", "A"],
+            [1, "4832015", "Carlos Andrés", "Mendoza Quispe", "1985-02-10", "M", "cmendozaq@fcpn.edu.bo", "A"],
+            [2, "1718901", "Manuel Ramiro", "Flores Vargas", "1980-05-15", "M", "mrflores@fcpn.edu.bo", "A"],
+            [3, "3451289", "Francisco", "Mamani Apaza", "1988-09-20", "M", "fmamania@fcpn.edu.bo", "A"],
+            [4, "12896709", "Luis Alejandro", "Zeballos Quiroz", "2002-11-03", "M", "lzeballosq@fcpn.edu.bo", "A"],
         ];
 
         for (const p of personas) {
@@ -54,10 +54,14 @@ const seedDatabase = async () => {
 
         console.log("--> Insertando Usuarios con Hash Bcrypt dinámico para '123456'...");
         const usuarios = [
-            [1, "admin", hashPass, 1, 1, "A"],
-            [2, "director", hashPass, 2, 2, "A"],
-            [3, "docente", hashPass, 3, 3, "A"],
-            [4, "estudiante", hashPass, 4, 4, "A"],
+            [1, "cmendozaq", hashPass, 1, 1, "A"],
+            [2, "mrflores", hashPass, 2, 2, "A"],
+            [3, "fmamania", hashPass, 3, 3, "A"],
+            [4, "lzeballosq", hashPass, 4, 4, "A"],
+            [5, "admin", hashPass, 1, 1, "A"],
+            [6, "director", hashPass, 2, 2, "A"],
+            [7, "docente", hashPass, 3, 3, "A"],
+            [8, "estudiante", hashPass, 4, 4, "A"],
         ];
 
         for (const u of usuarios) {
@@ -68,18 +72,18 @@ const seedDatabase = async () => {
         }
 
         console.log("--> Insertando datos de roles...");
-        await pool.query(`INSERT INTO administrativo (id_persona, item, id_carrera) VALUES (1, 'ADM-001', 1)`);
-        await pool.query(`INSERT INTO docente (id_persona, registro_docente, grado_academico) VALUES (2, 'DOC-001', 'Ph.D.'), (3, 'DOC-002', 'M.Sc.')`);
-        await pool.query(`INSERT INTO estudiante (id_persona, ru, id_plan, anio_ingreso) VALUES (4, '20210458', 1, 2021)`);
+        await pool.query(`INSERT INTO administrativo (id_persona, item, id_carrera) VALUES (1, '101205', 1)`);
+        await pool.query(`INSERT INTO docente (id_persona, registro_docente, grado_academico) VALUES (2, '1015648', 'Ph.D.'), (3, '1015649', 'M.Sc.')`);
+        await pool.query(`INSERT INTO estudiante (id_persona, ru, id_plan, anio_ingreso) VALUES (4, '1006000', 1, 2025)`);
         await pool.query(`INSERT INTO director_carrera (id_persona) VALUES (2)`);
 
         console.log("=================================================");
         console.log("[SEED SUCCESS] ¡Datos iniciales creados exitosamente en MySQL!");
         console.log("Usuarios creados (Contraseña para todos: '123456'):");
-        console.log(" - admin (Administrador)");
-        console.log(" - director (Director)");
-        console.log(" - docente (Docente)");
-        console.log(" - estudiante (Estudiante)");
+        console.log(" - cmendozaq (Administrador)");
+        console.log(" - mrflores (Director)");
+        console.log(" - fmamania (Docente)");
+        console.log(" - lzeballosq (Estudiante)");
         console.log("=================================================");
 
         pool.end();
