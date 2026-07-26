@@ -1,32 +1,44 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import { useToast } from "../../context/ToastContext";
 import { SectionHeader, Badge, EmptyState } from "../../components/Common/Common";
+import { SkeletonCard } from "../../components/Common/SkeletonLoader";
 
 export default function EnrollmentPage() {
   const { session } = useAuth();
   const data = useData();
-  const esAdmin = session.rolActivo === "ADMIN";
+  const esAdminOrDirector = session?.rolActivo === "ADMIN" || session?.rolActivo === "DIRECTOR";
   const gestionActiva = data.getGestionActiva();
 
-  // ---------- Vista Estudiante ----------
-  if (!esAdmin) {
-    return <VistaEstudiante session={session} data={data} gestionActiva={gestionActiva} />;
+  if (data.loadingBackend) {
+    return (
+      <div style={{ padding: 20 }}>
+        <SectionHeader title="Cargando Ventanilla de Inscripción..." />
+        <SkeletonCard count={3} height={140} />
+      </div>
+    );
   }
 
-  // ---------- Vista Administrador ----------
-  return <VistaAdministrador data={data} gestionActiva={gestionActiva} />;
+  // ---------- Vista Administrativo / Director ----------
+  if (esAdminOrDirector) {
+    return <VistaAdministrador data={data} gestionActiva={gestionActiva} />;
+  }
+
+  // ---------- Vista Estudiante ----------
+  return <VistaEstudiante session={session} data={data} gestionActiva={gestionActiva} />;
 }
 
 function VistaEstudiante({ session, data, gestionActiva }) {
-  const estudiante = session.estudiante;
-  const plan = data.planes.find((p) => p.id_plan === estudiante.id_plan);
-  const pensum = data.getPensumPlan(estudiante.id_plan);
+  const { showSuccess, showError, showWarning } = useToast();
+  const estudiante = session?.estudiante || { id_persona: session?.id_persona, ru: `RU-${session?.id_persona}`, id_plan: 1 };
+  const plan = data.planes.find((p) => p.id_plan === estudiante.id_plan) || data.planes[0];
+  const pensum = data.getPensumPlan(plan?.id_plan || 1);
   const [idMateria, setIdMateria] = useState(null);
 
   const misInscripcionesActivas = data
     .getHistorialEstudiante(estudiante.id_persona)
-    .filter((h) => h.gestion.id_gestion === gestionActiva?.id_gestion);
+    .filter((h) => h.gestion?.id_gestion === gestionActiva?.id_gestion && h.estado === "Inscrito");
 
   const materiasDisponibles = pensum.filter((m) => {
     const estado = data.getEstadoMateriaParaEstudiante(estudiante.id_persona, m.id_materia);
@@ -35,19 +47,61 @@ function VistaEstudiante({ session, data, gestionActiva }) {
 
   const paralelos = idMateria ? data.getParalelosOferta(idMateria, gestionActiva?.id_gestion) : [];
 
-  const inscribir = (id_paralelo) => {
-    const check = data.puedeInscribirse(estudiante.id_persona, plan.id_plan, idMateria);
-    if (!check.ok) {
-      alert(`No puede inscribirse: ${check.motivo}`);
+  // Función de validación de Choque de Horarios en Tiempo Real
+  const verificarChoqueHorario = (id_paralelo_target) => {
+    const candParalelo = data.paralelos.find((p) => p.id_materia === idMateria && p.id_paralelo === id_paralelo_target);
+    if (!candParalelo) return { choque: false };
+
+    const candSeCursa = data.horarios.length > 0 ? (candParalelo.horario || {}) : null;
+    const candHorario = candSeCursa ? data.horarios.find((h) => h.id_horario === candSeCursa.id_horario) : null;
+
+    if (!candHorario) return { choque: false };
+
+    for (const insc of misInscripcionesActivas) {
+      const insParalelo = data.paralelos.find((p) => p.id_materia === insc.id_materia && p.id_paralelo === insc.id_paralelo);
+      if (!insParalelo) continue;
+      const insHorario = insParalelo.horario ? data.horarios.find((h) => h.id_horario === insParalelo.horario.id_horario) : null;
+      if (!insHorario) continue;
+
+      if (candHorario.dia === insHorario.dia) {
+        if (candHorario.hora_inicio < insHorario.hora_fin && candHorario.hora_fin > insHorario.hora_inicio) {
+          const materiaChoque = data.getMateria(insc.id_materia);
+          return {
+            choque: true,
+            mensaje: `Choque de horario el día ${candHorario.dia} (${candHorario.hora_inicio}-${candHorario.hora_fin}) con la materia inscrita: ${materiaChoque?.sigla || 'Materia'}`
+          };
+        }
+      }
+    }
+
+    return { choque: false };
+  };
+
+  const inscribir = async (id_paralelo) => {
+    const checkPrereq = data.puedeInscribirse(estudiante.id_persona, plan?.id_plan || 1, idMateria);
+    if (!checkPrereq.ok) {
+      showError(`No puede inscribirse: ${checkPrereq.motivo}`);
       return;
     }
-    data.inscribirMateria(estudiante.id_persona, gestionActiva.id_gestion, idMateria, id_paralelo);
-    setIdMateria(null);
+
+    const checkChoque = verificarChoqueHorario(id_paralelo);
+    if (checkChoque.choque) {
+      showWarning(checkChoque.mensaje);
+      return;
+    }
+
+    try {
+      await data.inscribirMateria(estudiante.id_persona, gestionActiva?.id_gestion || 1, idMateria, id_paralelo);
+      showSuccess("¡Inscripción realizada con éxito!");
+      setIdMateria(null);
+    } catch (e) {
+      showError(`Error al realizar la inscripción: ${e.message}`);
+    }
   };
 
   return (
     <div>
-      <SectionHeader title="Ventanilla de Inscripción" subtitle={`Gestión activa: ${gestionActiva?.periodo || "—"}`} />
+      <SectionHeader title="Ventanilla de Auto-Inscripción" subtitle={`Gestión Activa: ${gestionActiva?.periodo || "I/2026"}`} />
 
       <div className="page-card" style={{ marginBottom: 20 }}>
         <SectionHeader title="Mis materias inscritas en esta gestión" />
@@ -55,18 +109,23 @@ function VistaEstudiante({ session, data, gestionActiva }) {
           <EmptyState text="Aún no se ha inscrito a ninguna materia en esta gestión." />
         ) : (
           <table className="table">
-            <thead><tr><th>Materia</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Materia</th><th>Paralelo</th><th>Estado</th><th>Acción</th></tr></thead>
             <tbody>
               {misInscripcionesActivas.map((h) => (
                 <tr key={h.id_detalle}>
-                  <td>{h.materia.sigla} — {h.materia.nombre}</td>
+                  <td><strong>{h.materia?.sigla}</strong> — {h.materia?.nombre}</td>
+                  <td>Paralelo {h.id_paralelo}</td>
                   <td><Badge>{h.estado}</Badge></td>
                   <td>
-                    {h.estado === "Inscrito" && (
-                      <button className="link-button danger" onClick={() => data.retirarInscripcion(h.id_detalle)}>
-                        Retirar
-                      </button>
-                    )}
+                    <button
+                      className="link-button danger"
+                      onClick={async () => {
+                        await data.retirarInscripcion(h.id_detalle);
+                        showInfo("Inscripción retirada correctamente.");
+                      }}
+                    >
+                      Retirar
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -76,20 +135,29 @@ function VistaEstudiante({ session, data, gestionActiva }) {
       </div>
 
       <div className="page-card">
-        <SectionHeader title="Materias disponibles para inscribirse" subtitle="Solo se muestran materias cuyos prerrequisitos ya cumplió (o que aún no aprueba)" />
+        <SectionHeader
+          title="Materias disponibles para inscripción"
+          subtitle="Seleccione una asignatura para ver los paralelos ofertados y verificar horarios"
+        />
         <div className="materia-grid">
           {materiasDisponibles.map((m) => {
-            const check = data.puedeInscribirse(estudiante.id_persona, plan.id_plan, m.id_materia);
+            const check = data.puedeInscribirse(estudiante.id_persona, plan?.id_plan || 1, m.id_materia);
             return (
               <button
                 key={m.id_materia}
                 className={`materia-card ${check.ok ? "materia-blue" : "materia-locked"}`}
-                onClick={() => (check.ok ? setIdMateria(m.id_materia) : alert(check.motivo))}
+                onClick={() => {
+                  if (check.ok) {
+                    setIdMateria(m.id_materia);
+                  } else {
+                    showWarning(check.motivo);
+                  }
+                }}
                 type="button"
               >
-                <strong>{m.materia.sigla}</strong>
-                <span>{m.materia.nombre}</span>
-                <small>{check.ok ? "Disponible" : "🔒 " + check.motivo}</small>
+                <strong>{m.materia?.sigla}</strong>
+                <span>{m.materia?.nombre}</span>
+                <small>{check.ok ? "Disponible para inscripcion" : "🔒 Prerrequisitos faltantes"}</small>
               </button>
             );
           })}
@@ -100,31 +168,48 @@ function VistaEstudiante({ session, data, gestionActiva }) {
         <div className="modal-backdrop" onClick={() => setIdMateria(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Elegir paralelo</h3>
+              <h3>Elegir Paralelo — {data.getMateria(idMateria)?.sigla}</h3>
               <button className="link-button" onClick={() => setIdMateria(null)}>Cerrar ✕</button>
             </div>
             {paralelos.length === 0 ? (
               <EmptyState text="No hay paralelos ofertados para esta materia en la gestión activa." />
             ) : (
               <table className="table">
-                <thead><tr><th>Paralelo</th><th>Docente</th><th>Cupo</th><th></th></tr></thead>
+                <thead><tr><th>Paralelo</th><th>Docente</th><th>Horario</th><th>Cupo</th><th>Acción</th></tr></thead>
                 <tbody>
-                  {paralelos.map((p) => (
-                    <tr key={p.id_paralelo}>
-                      <td>{p.nombre}</td>
-                      <td>{p.docenteNombre}</td>
-                      <td>{p.cupo_disponible} / {p.cupo_maximo}</td>
-                      <td>
-                        <button
-                          className="primary-button small"
-                          disabled={p.cupo_disponible <= 0}
-                          onClick={() => inscribir(p.id_paralelo)}
-                        >
-                          {p.cupo_disponible <= 0 ? "Sin cupo" : "Inscribirme"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {paralelos.map((p) => {
+                    const validacion = verificarChoqueHorario(p.id_paralelo);
+                    const sinCupo = p.cupo_disponible <= 0;
+                    return (
+                      <tr key={p.id_paralelo}>
+                        <td><strong>Paralelo {p.nombre}</strong></td>
+                        <td>{p.docenteNombre}</td>
+                        <td>
+                          {p.horario
+                            ? `${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.dia || ''} ${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_inicio || ''}`
+                            : "Por definir"}
+                        </td>
+                        <td>
+                          <span style={{ color: sinCupo ? "#e64545" : "#1f9d55", fontWeight: 600 }}>
+                            {p.cupo_disponible} / {p.cupo_maximo}
+                          </span>
+                        </td>
+                        <td>
+                          {validacion.choque ? (
+                            <span style={{ color: "#e64545", fontSize: "0.8rem", fontWeight: 600 }}>⚠️ Choque de horario</span>
+                          ) : (
+                            <button
+                              className="primary-button small"
+                              disabled={sinCupo}
+                              onClick={() => inscribir(p.id_paralelo)}
+                            >
+                              {sinCupo ? "Sin cupo" : "Inscribirme"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -136,14 +221,15 @@ function VistaEstudiante({ session, data, gestionActiva }) {
 }
 
 function VistaAdministrador({ data, gestionActiva }) {
-  const [idGestion, setIdGestion] = useState(gestionActiva?.id_gestion);
+  const { showSuccess, showInfo } = useToast();
+  const [idGestion, setIdGestion] = useState(gestionActiva?.id_gestion || 1);
   const [filtroEstudiante, setFiltroEstudiante] = useState("");
 
   const filas = useMemo(() => {
     return data.estudiantes
       .map((e) => {
         const persona = data.getPersona(e.id_persona);
-        const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => h.gestion.id_gestion === idGestion);
+        const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => h.gestion?.id_gestion === idGestion);
         return { estudiante: e, persona, historial };
       })
       .filter((f) => {
@@ -152,15 +238,11 @@ function VistaAdministrador({ data, gestionActiva }) {
       });
   }, [data, idGestion, filtroEstudiante]);
 
-  const cambiarEstado = (id_detalle, estado) => {
-    data.actualizarEstadoDetalle(id_detalle, { estado });
-  };
-
   return (
     <div>
       <SectionHeader
         title="Ventanilla de Inscripción — Administración"
-        subtitle="El administrativo puede revisar y modificar la inscripción de cualquier estudiante"
+        subtitle="Supervisión de inscripciones y gestión de excepciones para cualquier estudiante"
         actions={
           <>
             <input className="search-input" placeholder="Buscar estudiante o RU..." value={filtroEstudiante} onChange={(e) => setFiltroEstudiante(e.target.value)} />
@@ -180,24 +262,38 @@ function VistaAdministrador({ data, gestionActiva }) {
             <span className="activity-meta">RU: {f.estudiante.ru}</span>
           </div>
           {f.historial.length === 0 ? (
-            <EmptyState text="Sin inscripciones en esta gestión." />
+            <EmptyState text="Sin inscripciones registradas en esta gestión." />
           ) : (
             <table className="table">
-              <thead><tr><th>Materia</th><th>Estado</th><th>Nota</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Materia</th><th>Estado</th><th>Nota Final</th><th>Acciones</th></tr></thead>
               <tbody>
                 {f.historial.map((h) => (
                   <tr key={h.id_detalle}>
-                    <td>{h.materia.sigla} — {h.materia.nombre}</td>
+                    <td>{h.materia?.sigla} — {h.materia?.nombre}</td>
                     <td><Badge>{h.estado}</Badge></td>
-                    <td>{h.nota_final}</td>
+                    <td><strong>{h.nota_final}</strong></td>
                     <td>
-                      <select value={h.estado} onChange={(e) => cambiarEstado(h.id_detalle, e.target.value)}>
+                      <select
+                        value={h.estado}
+                        onChange={(e) => {
+                          data.actualizarEstadoDetalle(h.id_detalle, { estado: e.target.value });
+                          showSuccess(`Estado actualizado a: ${e.target.value}`);
+                        }}
+                      >
                         <option value="Inscrito">Inscrito</option>
                         <option value="Aprobado">Aprobado</option>
                         <option value="Reprobado">Reprobado</option>
                         <option value="Abandono">Abandono</option>
                       </select>
-                      <button className="link-button danger" onClick={() => data.retirarInscripcion(h.id_detalle)}>Eliminar</button>
+                      <button
+                        className="link-button danger"
+                        onClick={async () => {
+                          await data.retirarInscripcion(h.id_detalle);
+                          showInfo("Inscripción eliminada por administración.");
+                        }}
+                      >
+                        Eliminar
+                      </button>
                     </td>
                   </tr>
                 ))}

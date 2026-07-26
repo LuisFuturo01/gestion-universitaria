@@ -145,11 +145,24 @@
   gap: 14px;
 }
 
-.role-switch {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #d8e2ef;
+.role-switcher-container {
+  display: flex;
+  align-items: center;
   background: #f4f8fc;
+  border: 1px solid #d8e2ef;
+  border-radius: 10px;
+  padding: 4px 10px;
+}
+
+.role-switch {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #1a5fb4;
+  cursor: pointer;
 }
 
 .user-chip {
@@ -190,6 +203,27 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
+}
+
+/* ============ ANIMACIONES KEYFRAMES ============ */
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes skeletonShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* ============ LOGIN ============ */
@@ -511,11 +545,12 @@ input:focus, select:focus, textarea:focus {
 }
 
 .legend-chip {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  border: 1px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 2px solid transparent;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .semester-block {
@@ -529,35 +564,93 @@ input:focus, select:focus, textarea:focus {
 
 .materia-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
 }
 
 .materia-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   text-align: left;
-  padding: 14px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 14px;
   border: 2px solid transparent;
   cursor: pointer;
   font: inherit;
-  transition: transform 0.12s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .materia-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
-.materia-card small { opacity: 0.85; }
+.materia-card strong {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
 
-.materia-green, .legend-chip.materia-green { background: #e6f8ec; border-color: #b7e6c7; color: #146c37; }
-.materia-yellow, .legend-chip.materia-yellow { background: #fff6e0; border-color: #f3dfa0; color: #8a600b; }
-.materia-red, .legend-chip.materia-red { background: #fdeaea; border-color: #f3c4c1; color: #8f1f19; }
-.materia-blue, .legend-chip.materia-blue { background: #e6f0fc; border-color: #b9d3f4; color: #12457f; }
-.materia-neutral { background: #f4f7fb; border-color: #e1e8f2; color: #3a4c66; }
-.materia-locked { background: #f1f1f4; border-color: #e1e1e6; color: #8a8f9c; cursor: not-allowed; }
+.materia-card span {
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.materia-card small {
+  opacity: 0.9;
+  font-size: 0.76rem;
+  margin-top: 4px;
+}
+
+/* COLORES DE TARJETA COMPLETA VIBRANTES SEGÚN TIPO DE MATERIA */
+.materia-tecnico, .legend-chip.materia-tecnico {
+  background: linear-gradient(135deg, #f3e8ff, #e9d5ff) !important;
+  border-color: #a855f7 !important;
+  color: #581c87 !important;
+}
+
+.materia-optativa-generica, .legend-chip.materia-optativa-generica {
+  background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+}
+
+.materia-optativa, .legend-chip.materia-optativa {
+  background: linear-gradient(135deg, #e0f2fe, #bae6fd) !important;
+  border-color: #0284c7 !important;
+  color: #0c4a6e !important;
+}
+
+.materia-corriente, .legend-chip.materia-corriente {
+  background: linear-gradient(135deg, #e6f0fc, #dbeafe) !important;
+  border-color: #3b82f6 !important;
+  color: #1e3a8a !important;
+}
+
+.tipo-tag {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  width: fit-content;
+  margin-bottom: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tipo-tag.materia-tecnico { background: #7e22ce !important; color: #ffffff !important; }
+.tipo-tag.materia-optativa-generica { background: #d97706 !important; color: #ffffff !important; }
+.tipo-tag.materia-optativa { background: #0284c7 !important; color: #ffffff !important; }
+.tipo-tag.materia-corriente { background: #1d4ed8 !important; color: #ffffff !important; }
+
+/* SOBRESCRITURA PARA ESTADO ESTUDIANTIL */
+.materia-green, .legend-chip.materia-green { background: linear-gradient(135deg, #dcfce7, #bbf7d0) !important; border-color: #22c55e !important; color: #14532d !important; }
+.materia-yellow, .legend-chip.materia-yellow { background: linear-gradient(135deg, #fef9c3, #fef08a) !important; border-color: #eab308 !important; color: #713f12 !important; }
+.materia-red, .legend-chip.materia-red { background: linear-gradient(135deg, #fee2e2, #fecaca) !important; border-color: #ef4444 !important; color: #7f1d1d !important; }
+.materia-blue, .legend-chip.materia-blue { background: linear-gradient(135deg, #e0f2fe, #bae6fd) !important; border-color: #0284c7 !important; color: #0c4a6e !important; }
 
 /* ============ FORM GRID ============ */
 .form-grid {

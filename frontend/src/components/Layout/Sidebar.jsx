@@ -3,20 +3,23 @@ import { useAuth } from "../../context/AuthContext";
 
 const MENU = [
   { to: "/dashboard", icon: "🏠", label: "Inicio", roles: [] },
-  { to: "/usuarios", icon: "👤", label: "Usuarios y Roles", roles: ["ADMIN"] },
+  { to: "/usuarios", icon: "👤", label: "Usuarios y Roles", roles: ["ADMIN", "DIRECTOR"] },
   { to: "/oferta-academica", icon: "📚", label: "Oferta Académica", roles: [] },
-  { to: "/inscripcion", icon: "📝", label: "Inscripciones", roles: ["ADMIN", "ESTUDIANTE"] },
+  { to: "/inscripcion", icon: "📝", label: "Inscripciones", roles: ["ADMIN", "DIRECTOR", "ESTUDIANTE"] },
   { to: "/notas", icon: "🧮", label: "Notas y Ponderaciones", roles: ["DOCENTE", "ESTUDIANTE", "ADMIN", "DIRECTOR"] },
-  { to: "/historial", icon: "📖", label: "Historial Académico", roles: [] },
+  { to: "/historial", icon: "📖", label: "Historial Académico", roles: ["ADMIN", "DIRECTOR", "ESTUDIANTE"] },
   { to: "/reportes", icon: "📊", label: "Reportes y Estadísticas", roles: ["ADMIN", "DIRECTOR"] },
-  { to: "/cierre-gestion", icon: "🔒", label: "Cierre de Gestión", roles: ["ADMIN", "DIRECTOR"] },
+  { to: "/cierre-gestion", icon: "🔒", label: "Cierre de Gestión", roles: ["DIRECTOR"] },
 ];
 
 export default function Sidebar({ open, onClose }) {
   const { session } = useAuth();
   if (!session) return null;
 
-  const visible = MENU.filter((item) => item.roles.length === 0 || item.roles.some((r) => session.roles.includes(r)));
+  // Filtrado adaptativo estricto por el contexto activo (rolActivo)
+  const visible = MENU.filter(
+    (item) => item.roles.length === 0 || item.roles.includes(session.rolActivo)
+  );
 
   return (
     <>
@@ -25,7 +28,9 @@ export default function Sidebar({ open, onClose }) {
           <span className="sidebar-logo">UN</span>
           <div>
             <p className="sidebar-title">Sistema Académico</p>
-            <p className="sidebar-subtitle">Universidad Nacional</p>
+            <p className="sidebar-subtitle">
+              {session.rolActivo === "DIRECTOR" ? "Modo Director" : session.rolActivo === "DOCENTE" ? "Modo Docente" : "Universidad Nacional"}
+            </p>
           </div>
         </div>
 

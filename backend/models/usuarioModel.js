@@ -7,6 +7,7 @@ export const obtTodo = async () => {
             u.username,
             u.id_persona,
             u.id_rol,
+            u.estado,
             r.nombre AS rol,
             p.ci,
             p.nombres,
@@ -15,7 +16,7 @@ export const obtTodo = async () => {
         FROM usuario u
         LEFT JOIN persona p ON u.id_persona = p.id_persona
         LEFT JOIN rol r ON u.id_rol = r.id_rol
-        WHERE u.estado = 'A'
+        ORDER BY u.id_usuario ASC
     `);
 
     return resultado;
@@ -29,6 +30,7 @@ export const obtUsuario = async (id) => {
             u.username,
             u.id_persona,
             u.id_rol,
+            u.estado,
             r.nombre AS rol,
             p.ci,
             p.nombres,
@@ -37,7 +39,7 @@ export const obtUsuario = async (id) => {
         FROM usuario u
         LEFT JOIN persona p ON u.id_persona = p.id_persona
         LEFT JOIN rol r ON u.id_rol = r.id_rol
-        WHERE u.id_usuario = ? AND u.estado = 'A'  
+        WHERE u.id_usuario = ?
         `,
         [id]
     );
@@ -64,17 +66,18 @@ export const inserta = async (usuario) => {
 };
 
 export const actualiza = async (id, usuario) => {
-    const { username, password_hash, id_rol } = usuario;
+    const { username, password_hash, id_rol, estado } = usuario;
 
     await pool.query(
         `
         UPDATE usuario
-        SET username = ?,
+        SET username = COALESCE(?, username),
             password_hash = COALESCE(?, password_hash),
-            id_rol = COALESCE(?, id_rol)
+            id_rol = COALESCE(?, id_rol),
+            estado = COALESCE(?, estado)
         WHERE id_usuario = ?
         `,
-        [username, password_hash || null, id_rol || null, id]
+        [username || null, password_hash || null, id_rol || null, estado || null, id]
     );
 
     return {
@@ -87,7 +90,7 @@ export const elimina = async (id) => {
     await pool.query(
         `
         UPDATE usuario
-        SET estado = 'I'
+        SET estado = IF(estado = 'A', 'I', 'A')
         WHERE id_usuario = ?
         `,
         [id]

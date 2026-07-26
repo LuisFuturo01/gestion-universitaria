@@ -15,65 +15,68 @@ import AppLayout from "./components/Layout/AppLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
+import { ToastProvider } from "./context/ToastContext";
 
 function App() {
   return (
     <AuthProvider>
-      <DataProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
+      <ToastProvider>
+        <DataProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
 
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/dashboard" element={<DashboardPage />} />
               <Route
-                path="/usuarios"
                 element={
-                  <ProtectedRoute roles={["ADMIN"]}>
-                    <UsersPage />
+                  <ProtectedRoute>
+                    <AppLayout />
                   </ProtectedRoute>
                 }
-              />
-              <Route path="/oferta-academica" element={<AcademicOfferPage />} />
-              <Route
-                path="/inscripcion"
-                element={
-                  <ProtectedRoute roles={["ADMIN", "ESTUDIANTE"]}>
-                    <EnrollmentPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/notas" element={<GradesPage />} />
-              <Route path="/historial" element={<HistoryPage />} />
-              <Route
-                path="/reportes"
-                element={
-                  <ProtectedRoute roles={["ADMIN", "DIRECTOR"]}>
-                    <ReportsPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/cierre-gestion"
-                element={
-                  <ProtectedRoute roles={["ADMIN", "DIRECTOR"]}>
-                    <GestionClosePage />
-                  </ProtectedRoute>
-                }
-              />
-            </Route>
+              >
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route
+                  path="/usuarios"
+                  element={
+                    <ProtectedRoute roles={["ADMIN", "DIRECTOR"]}>
+                      <UsersPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/oferta-academica" element={<AcademicOfferPage />} />
+                <Route
+                  path="/inscripcion"
+                  element={
+                    <ProtectedRoute roles={["ADMIN", "DIRECTOR", "ESTUDIANTE"]}>
+                      <EnrollmentPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/notas" element={<GradesPage />} />
+                <Route path="/historial" element={<HistoryPage />} />
+                <Route
+                  path="/reportes"
+                  element={
+                    <ProtectedRoute roles={["ADMIN", "DIRECTOR"]}>
+                      <ReportsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/cierre-gestion"
+                  element={
+                    <ProtectedRoute roles={["DIRECTOR"]}>
+                      <GestionClosePage />
+                    </ProtectedRoute>
+                  }
+                />
+              </Route>
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </DataProvider>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </DataProvider>
+      </ToastProvider>
     </AuthProvider>
   );
 }

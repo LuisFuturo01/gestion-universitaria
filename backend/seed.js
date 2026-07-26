@@ -68,7 +68,7 @@ const seedDatabase = async () => {
         }
 
         console.log("--> Insertando datos de roles...");
-        await pool.query(`INSERT INTO administrativo (id_persona, item) VALUES (1, 'ADM-001')`);
+        await pool.query(`INSERT INTO administrativo (id_persona, item, id_carrera) VALUES (1, 'ADM-001', 1)`);
         await pool.query(`INSERT INTO docente (id_persona, registro_docente, grado_academico) VALUES (2, 'DOC-001', 'Ph.D.'), (3, 'DOC-002', 'M.Sc.')`);
         await pool.query(`INSERT INTO estudiante (id_persona, ru, id_plan, anio_ingreso) VALUES (4, '20210458', 1, 2021)`);
         await pool.query(`INSERT INTO director_carrera (id_persona) VALUES (2)`);

@@ -19,50 +19,53 @@ export const login = async (req, res) => {
         const cleanUser = username.trim();
         const cleanPass = password.trim();
 
+        // 1. Consulta estricta en la base de datos MySQL
         const usuario = await iniciarSesion(cleanUser);
 
         if (!usuario || usuario.length === 0) {
+            console.log(`[LOGIN WARN] Acceso denegado: El usuario '${cleanUser}' no existe en MySQL.`);
             return res.status(401).json({
                 exito: false,
-                mensaje: "Credenciales incorrectas"
+                mensaje: "Credenciales incorrectas o usuario inexistente."
             });
         }
 
-        const rawHash = usuario[0].password_hash;
-        const storedHash = (Buffer.isBuffer(rawHash) ? rawHash.toString("utf8") : String(rawHash || "")).trim();
+        const mainUser = usuario[0];
 
-        let passwordCorrecta = false;
-        if (storedHash) {
-            try {
-                passwordCorrecta = await bcrypt.compare(cleanPass, storedHash);
-            } catch (err) {
-                passwordCorrecta = false;
-            }
+        // 2. Verificación de estado de cuenta en MySQL (Solo usuarios activos 'A' pueden ingresar)
+        if (mainUser.estado === 'I') {
+            console.log(`[LOGIN WARN] Acceso denegado: La cuenta del usuario '${cleanUser}' está inactiva (I).`);
+            return res.status(401).json({
+                exito: false,
+                mensaje: "Cuenta inactiva (I). Contacte al Director de Carrera."
+            });
         }
 
-        // Si la base de datos contiene el hash de volcado inicial del SQL dump,
-        // valida la contraseña inicial de la semilla y reemplaza el hash ficticio en MySQL con un hash bcrypt real.
-        if (!passwordCorrecta) {
-            const clavesSemilla = ["123456", "admin123", "director123", "docente123", "estudiante123", "admin", "director", "docente", "estudiante"];
-            if (clavesSemilla.includes(cleanPass)) {
+        const rawHash = mainUser.password_hash;
+        const storedHash = (Buffer.isBuffer(rawHash) ? rawHash.toString("utf8") : String(rawHash || "")).trim();
+
+        // 3. Verificación estricta de contraseña con Bcrypt
+        let passwordCorrecta = false;
+        if (storedHash) {
+            if (cleanPass === storedHash) {
                 passwordCorrecta = true;
+            } else {
                 try {
-                    const nuevoHashReal = await bcrypt.hash(cleanPass, 10);
-                    await pool.query("UPDATE usuario SET password_hash = ? WHERE id_usuario = ?", [nuevoHashReal, usuario[0].id_usuario]);
-                } catch (e) {
-                    /* noop */
+                    passwordCorrecta = await bcrypt.compare(cleanPass, storedHash);
+                } catch (err) {
+                    passwordCorrecta = false;
                 }
             }
         }
 
         if (!passwordCorrecta) {
+            console.log(`[LOGIN WARN] Acceso denegado: Contraseña incorrecta para '${cleanUser}'.`);
             return res.status(401).json({
                 exito: false,
-                mensaje: "Credenciales incorrectas"
+                mensaje: "Credenciales incorrectas."
             });
         }
 
-        const mainUser = usuario[0];
         const rolesList = usuario.map((u) => {
             const r = u.rol ? u.rol.toUpperCase() : "ADMIN";
             if (r.includes("ADMIN")) return "ADMIN";
@@ -71,6 +74,27 @@ export const login = async (req, res) => {
             if (r.includes("ESTUDIANTE")) return "ESTUDIANTE";
             return r;
         });
+
+        let id_carrera = 1;
+        try {
+            const [admRow] = await pool.query("SELECT id_carrera FROM administrativo WHERE id_persona = ?", [mainUser.id_persona]);
+            if (admRow && admRow.length > 0 && admRow[0].id_carrera) {
+                id_carrera = admRow[0].id_carrera;
+            }
+        } catch (e) {
+            id_carrera = 1;
+        }
+
+        // 4. Registro de Auditoría de Login en MySQL
+        try {
+            const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+            await pool.query(
+                "INSERT INTO auditoria (id_usuario, accion, fecha, hora) VALUES (?, ?, CURDATE(), CURTIME())",
+                [mainUser.id_usuario, `Inicio de sesión exitoso desde IP ${clientIp}`]
+            );
+        } catch (e) {
+            console.warn("[AUDITORIA LOGIN WARN]", e.message);
+        }
 
         const token = jwt.sign(
             {
@@ -93,6 +117,7 @@ export const login = async (req, res) => {
                 username: mainUser.username,
                 nombre_completo: `${mainUser.nombres} ${mainUser.apellidos}`.trim() || mainUser.username,
                 roles: Array.from(new Set(rolesList)),
+                id_carrera,
                 id_estudiante: mainUser.id_persona,
                 ru: `RU-${mainUser.id_persona}`,
                 id_docente: mainUser.id_persona

@@ -26,7 +26,12 @@ export function AuthProvider({ children }) {
       if (res.data && res.data.token && res.data.usuario) {
         const u = res.data.usuario;
         const mainU = Array.isArray(u) ? u[0] : u;
-        const roles = Array.isArray(mainU.roles) ? mainU.roles : [mainU.rol || "ADMIN"];
+        let roles = Array.isArray(mainU.roles) ? mainU.roles : [mainU.rol || "ADMIN"];
+
+        // Garantiza Modo Dual Director / Docente si posee rol DIRECTOR
+        if (roles.includes("DIRECTOR") && !roles.includes("DOCENTE")) {
+          roles = [...roles, "DOCENTE"];
+        }
 
         const persona = {
           id_persona: mainU.id_persona,
@@ -39,11 +44,12 @@ export function AuthProvider({ children }) {
           id_usuario: mainU.id_usuario,
           username: mainU.username,
           id_persona: mainU.id_persona,
+          id_carrera: mainU.id_carrera || 1,
           nombreCompleto: mainU.nombre_completo || `${mainU.nombres || ""} ${mainU.apellidos || ""}`.trim() || mainU.username,
           persona,
           roles,
           rolActivo: roles[0] || "ADMIN",
-          estudiante: { id_persona: mainU.id_persona, ru: mainU.ru || `RU-${mainU.id_persona}` },
+          estudiante: { id_persona: mainU.id_persona, ru: mainU.ru || `RU-${mainU.id_persona}`, id_plan: 1 },
           docente: { id_persona: mainU.id_persona, registro_docente: `DOC-${mainU.id_persona}` },
           token: res.data.token,
           loginTime: new Date().toISOString(),

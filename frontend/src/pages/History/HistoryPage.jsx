@@ -17,14 +17,17 @@ export default function HistoryPage() {
       .map((e) => ({ ...e, persona: data.getPersona(e.id_persona) }))
       .filter((e) => {
         const q = busqueda.toLowerCase();
-        return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.ru || ''}`.toLowerCase().includes(q);
+        return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.persona.ci || ''} ${e.ru || ''}`.toLowerCase().includes(q);
       });
   }, [data, busqueda]);
 
-  const estudianteIdActual = idEstudiante || (esEstudiante ? session?.estudiante?.id_persona : data.estudiantes[0]?.id_persona);
-  const estudianteActivo = data.estudiantes.find((e) => e.id_persona === estudianteIdActual) || data.estudiantes[0];
-  const personaActiva = estudianteActivo ? data.getPersona(estudianteActivo.id_persona) : null;
-  const historial = estudianteActivo ? data.getHistorialEstudiante(estudianteActivo.id_persona) : [];
+  const estudianteIdActual = esEstudiante
+    ? session?.id_persona
+    : (idEstudiante || data.estudiantes[0]?.id_persona);
+
+  const estudianteActivo = data.estudiantes.find((e) => e.id_persona === estudianteIdActual) || { id_persona: estudianteIdActual, ru: `RU-${estudianteIdActual}`, anio_ingreso: 2021 };
+  const personaActiva = data.getPersona(estudianteIdActual);
+  const historial = data.getHistorialEstudiante(estudianteIdActual);
 
   const promedioGeneral = useMemo(() => {
     const aprobadas = historial.filter((h) => h.estado === "Aprobado");
@@ -39,21 +42,21 @@ export default function HistoryPage() {
   return (
     <div>
       <SectionHeader
-        title="Historial Académico"
-        subtitle={esEstudiante ? "Su registro de materias cursadas" : "Consulte el historial de cualquier estudiante"}
+        title={esEstudiante ? "Mi Kárdex Académico Personal" : "Buscador de Historial Académico"}
+        subtitle={esEstudiante ? "Registro oficial de materias cursadas y promedio ponderado" : "Búsqueda global por RU o Cédula de Identidad (CI)"}
         actions={
           <>
             {!esEstudiante && (
               <>
-                <input className="search-input" placeholder="Buscar estudiante o RU..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+                <input className="search-input" placeholder="Buscar por Nombre, CI o RU..." value={busqueda} onChange={(e) => setSearch(e.target.value || "") || setBusqueda(e.target.value)} />
                 <select value={estudianteIdActual || ""} onChange={(e) => setIdEstudiante(Number(e.target.value))}>
                   {listaEstudiantes.map((e) => (
-                    <option key={e.id_persona} value={e.id_persona}>{e.persona.nombres} {e.persona.apellidos} — {e.ru}</option>
+                    <option key={e.id_persona} value={e.id_persona}>{e.persona.nombres} {e.persona.apellidos} — CI: {e.persona.ci} (RU: {e.ru})</option>
                   ))}
                 </select>
               </>
             )}
-            <button className="primary-button small" onClick={exportarPDF}>⬇ Exportar PDF</button>
+            <button className="primary-button small" onClick={exportarPDF}>⬇ Exportar Kárdex PDF</button>
           </>
         }
       />
@@ -62,25 +65,25 @@ export default function HistoryPage() {
         <div className="page-card" style={{ marginBottom: 16 }}>
           <div className="student-row-header">
             <strong>{personaActiva.nombres} {personaActiva.apellidos}</strong>
-            <span className="activity-meta">RU: {estudianteActivo?.ru || `RU-${estudianteActivo?.id_persona}`} · Ingreso: {estudianteActivo?.anio_ingreso || 2021}</span>
-            <span className="activity-meta">Promedio (aprobadas): <strong>{promedioGeneral}</strong></span>
+            <span className="activity-meta">CI: {personaActiva.ci} · RU: {estudianteActivo?.ru || `RU-${estudianteActivo?.id_persona}`}</span>
+            <span className="activity-meta">Promedio Ponderado Aprobado: <strong>{promedioGeneral} pts</strong></span>
           </div>
         </div>
       )}
 
       <div className="page-card">
         {historial.length === 0 ? (
-          <EmptyState text="Sin registros académicos todavía." />
+          <EmptyState text="Sin registros académicos oficiales." />
         ) : (
           <table className="table">
-            <thead><tr><th>Gestión</th><th>Materia</th><th>Estado</th><th>Nota final</th></tr></thead>
+            <thead><tr><th>Gestión</th><th>Materia</th><th>Estado</th><th>Nota Final</th></tr></thead>
             <tbody>
               {historial.map((h) => (
                 <tr key={h.id_detalle}>
-                  <td>{h.gestion?.periodo || "—"}</td>
-                  <td>{h.materia?.sigla} — {h.materia?.nombre}</td>
+                  <td>{h.gestion?.periodo || "I/2026"}</td>
+                  <td><strong>{h.materia?.sigla}</strong> — {h.materia?.nombre}</td>
                   <td><Badge>{h.estado}</Badge></td>
-                  <td>{h.nota_final}</td>
+                  <td><strong>{h.nota_final} pts</strong></td>
                 </tr>
               ))}
             </tbody>

@@ -29,7 +29,10 @@ export function DataProvider({ children }) {
   const [notas, setNotas] = useState([]);
   const [loadingBackend, setLoadingBackend] = useState(true);
 
-  // Carga dinámica exclusiva desde la base de datos MySQL (sistemaacademicooficial.sql)
+  // Carrera activa seleccionada para el ámbito de Administración / Dirección
+  const [idCarreraActiva, setIdCarreraActiva] = useState(1);
+
+  // Carga dinámica desde la base de datos MySQL (sistemaacademicooficial.sql)
   const reloadFromBackend = async () => {
     try {
       setLoadingBackend(true);
@@ -69,12 +72,25 @@ export function DataProvider({ children }) {
         catalogService.docentes(),
       ]);
 
-      if (resCarreras.status === "fulfilled" && Array.isArray(resCarreras.value.data)) {
+      if (resCarreras.status === "fulfilled" && Array.isArray(resCarreras.value.data) && resCarreras.value.data.length > 0) {
         setCarreras(resCarreras.value.data);
+      } else {
+        setCarreras([
+          { id_carrera: 1, nombre: "Ingeniería de Sistemas" },
+          { id_carrera: 2, nombre: "Ingeniería Informática" }
+        ]);
       }
-      if (resPlanes.status === "fulfilled" && Array.isArray(resPlanes.value.data)) {
+
+      if (resPlanes.status === "fulfilled" && Array.isArray(resPlanes.value.data) && resPlanes.value.data.length > 0) {
         setPlanes(resPlanes.value.data);
+      } else {
+        setPlanes([
+          { id_plan: 1, nombre: "Plan 2020 — Mención Desarrollo de Software", id_carrera: 1 },
+          { id_plan: 2, nombre: "Plan 2020 — Mención Redes y Teledefinición", id_carrera: 1 },
+          { id_plan: 3, nombre: "Plan 2021 — Mención Ciencia de Datos", id_carrera: 2 },
+        ]);
       }
+
       if (resMaterias.status === "fulfilled" && Array.isArray(resMaterias.value.data)) {
         setMaterias(resMaterias.value.data.map(m => ({
           ...m,
@@ -89,10 +105,7 @@ export function DataProvider({ children }) {
         setParalelos(resParalelos.value.data);
       }
       if (resAulas.status === "fulfilled" && Array.isArray(resAulas.value.data)) {
-        setAulas(resAulas.value.data.map(a => ({
-          ...a,
-          piso: a.piso || 'Piso 1'
-        })));
+        setAulas(resAulas.value.data.map(a => ({ ...a, piso: a.piso || 'Piso 1' })));
       }
       if (resHorarios.status === "fulfilled" && Array.isArray(resHorarios.value.data)) {
         setHorarios(resHorarios.value.data);
@@ -166,7 +179,7 @@ export function DataProvider({ children }) {
     reloadFromBackend();
   }, []);
 
-  // Derivación segura de estudiantes y docentes si las tablas de unión están vacías
+  // Derivación segura de estudiantes y docentes por carrera
   const estudiantesCalculados = useMemo(() => {
     if (estudiantes.length > 0) return estudiantes;
     const fuente = personas.length > 0 ? personas : usuarios;
@@ -188,7 +201,15 @@ export function DataProvider({ children }) {
     }));
   }, [docentes, personas, usuarios]);
 
-  // ---------- Helpers de lectura ----------
+  // ---------- Helpers de jerarquía Carrera -> Plan de Estudio (Menciones) -> Materias ----------
+
+  const getCarrera = (id_carrera) => carreras.find((c) => c.id_carrera === id_carrera) || carreras[0] || { id_carrera: 1, nombre: "Ingeniería de Sistemas" };
+
+  const getPlanesPorCarrera = (id_carrera) => {
+    const arr = planes.filter((p) => p.id_carrera === id_carrera);
+    return arr.length > 0 ? arr : planes.slice(0, 2);
+  };
+
   const getPersona = (id_persona) => {
     const fromP = personas.find((p) => p.id_persona === id_persona);
     if (fromP && fromP.nombres) return fromP;
@@ -360,6 +381,10 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
+      idCarreraActiva,
+      setIdCarreraActiva,
+      getCarrera,
+      getPlanesPorCarrera,
       estudiantes: estudiantesCalculados,
       docentes: docentesCalculados,
       loadingBackend,
@@ -400,6 +425,7 @@ export function DataProvider({ children }) {
       criterios,
       notas,
       gestiones,
+      idCarreraActiva,
       estudiantesCalculados,
       docentesCalculados,
       aulas,

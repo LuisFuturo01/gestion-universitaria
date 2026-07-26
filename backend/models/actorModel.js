@@ -279,9 +279,12 @@ export const obtTodoAdministrativos = async () => {
             p.fecha_nac,
             p.sexo,
             p.email,
-            a.item
+            a.item,
+            a.id_carrera,
+            c.nombre AS carrera
         FROM persona p
         INNER JOIN administrativo a ON p.id_persona = a.id_persona
+        LEFT JOIN carrera c ON a.id_carrera = c.id_carrera
         WHERE p.estado='A'
     `);
     return resultado;
@@ -297,9 +300,12 @@ export const obtAdministrativo = async (id) => {
             p.fecha_nac,
             p.sexo,
             p.email,
-            a.item
+            a.item,
+            a.id_carrera,
+            c.nombre AS carrera
         FROM persona p
         INNER JOIN administrativo a ON p.id_persona = a.id_persona
+        LEFT JOIN carrera c ON a.id_carrera = c.id_carrera
         WHERE p.id_persona=? AND p.estado='A'
     `,[id]);
     return resultado[0];
@@ -309,14 +315,14 @@ export const actualizaAdm = async (id, administrativo) => {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
-        const { ci, nombres, apellidos, fecha_nac, sexo, email, item } = administrativo;
+        const { ci, nombres, apellidos, fecha_nac, sexo, email, item, id_carrera } = administrativo;
         await conexion.query(`
             UPDATE persona SET ci=?, nombres=?, apellidos=?, fecha_nac=?, sexo=?, email=? WHERE id_persona=?
         `,[ci, nombres, apellidos, fecha_nac, sexo, email, id]);
 
         await conexion.query(`
-            UPDATE administrativo SET item=? WHERE id_persona=?
-        `,[item, id]);
+            UPDATE administrativo SET item=?, id_carrera=COALESCE(?, id_carrera) WHERE id_persona=?
+        `,[item, id_carrera || null, id]);
 
         await conexion.commit();
         return { id_persona: id, ...administrativo };
@@ -348,7 +354,7 @@ export const insertaAdm = async (administrativo) => {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
-        const { ci, nombres, apellidos, fecha_nac, sexo, email, username, password, item } = administrativo;
+        const { ci, nombres, apellidos, fecha_nac, sexo, email, username, password, item, id_carrera } = administrativo;
         const hash = await bcrypt.hash(password, 10);
         const [persona] = await conexion.query(`
             INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
@@ -363,8 +369,8 @@ export const insertaAdm = async (administrativo) => {
         const id_usuario = usuario.insertId;
 
         await conexion.query(`
-            INSERT INTO administrativo (id_persona, item) VALUES (?,?)
-        `,[id_persona, item]);
+            INSERT INTO administrativo (id_persona, item, id_carrera) VALUES (?,?,?)
+        `,[id_persona, item, id_carrera || 1]);
 
         await conexion.commit();
         return { id_persona, id_usuario, mensaje: "Administrativo registrado correctamente" };

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 25-07-2026 a las 22:39:17
+-- Tiempo de generación: 26-07-2026 a las 01:46:40
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -389,7 +389,29 @@ DELIMITER ;
 
 CREATE TABLE `administrativo` (
   `id_persona` int(11) NOT NULL,
-  `item` varchar(20) NOT NULL
+  `item` varchar(20) NOT NULL,
+  `id_carrera` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `administrativo`
+--
+
+INSERT INTO `administrativo` (`id_persona`, `item`, `id_carrera`) VALUES
+(1, 'ADM-001', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `auditoria`
+--
+
+CREATE TABLE `auditoria` (
+  `id_auditoria` int(11) NOT NULL,
+  `id_usuario` int(11) NOT NULL,
+  `accion` varchar(255) NOT NULL,
+  `fecha` date NOT NULL,
+  `hora` time NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -406,6 +428,17 @@ CREATE TABLE `aula` (
   `capacidad` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `aula`
+--
+
+INSERT INTO `aula` (`id_aula`, `nombre`, `piso`, `ubicacion`, `capacidad`) VALUES
+(1, 'Aula 101', 'Piso 1', 'Pabellón A', 50),
+(2, 'Aula 102', 'Piso 1', 'Pabellón A', 50),
+(3, 'Lab 1', 'Planta Baja', 'Edificio Central', 30),
+(4, 'Lab 2', 'Planta Baja', 'Edificio Central', 30),
+(5, 'Auditorio', 'Piso 2', 'Bloque B', 120);
+
 -- --------------------------------------------------------
 
 --
@@ -416,6 +449,15 @@ CREATE TABLE `carrera` (
   `id_carrera` int(11) NOT NULL,
   `nombre` varchar(100) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `carrera`
+--
+
+INSERT INTO `carrera` (`id_carrera`, `nombre`) VALUES
+(3, 'Estadística'),
+(1, 'Informática'),
+(2, 'Ingeniería de Sistemas');
 
 -- --------------------------------------------------------
 
@@ -430,6 +472,25 @@ CREATE TABLE `criterio_evaluacion` (
   `nombre` varchar(50) NOT NULL,
   `ponderacion` float NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Disparadores `criterio_evaluacion`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_validar_ponderacion_criterio` BEFORE INSERT ON `criterio_evaluacion` FOR EACH ROW BEGIN
+    DECLARE v_suma_actual FLOAT;
+    
+    SELECT COALESCE(SUM(ponderacion), 0) INTO v_suma_actual
+    FROM criterio_evaluacion
+    WHERE id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo;
+    
+    IF (v_suma_actual + NEW.ponderacion) > 100 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La suma de las ponderaciones no puede superar el 100%.';
+    END IF;
+END
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -459,11 +520,27 @@ END
 $$
 DELIMITER ;
 DELIMITER $$
+CREATE TRIGGER `trg_decrementar_cupo_actual` AFTER DELETE ON `detalle_inscripcion` FOR EACH ROW BEGIN
+    UPDATE paralelo
+    SET cupo_actual = GREATEST(cupo_actual - 1, 0)
+    WHERE id_materia = OLD.id_materia AND id_paralelo = OLD.id_paralelo;
+END
+$$
+DELIMITER ;
+DELIMITER $$
 CREATE TRIGGER `trg_disminuir_cupo` AFTER DELETE ON `detalle_inscripcion` FOR EACH ROW BEGIN
     UPDATE PARALELO
     SET cupo_actual=cupo_actual-1
     WHERE id_materia=OLD.id_materia
     AND id_paralelo=OLD.id_paralelo;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_incrementar_cupo_actual` AFTER INSERT ON `detalle_inscripcion` FOR EACH ROW BEGIN
+    UPDATE paralelo
+    SET cupo_actual = cupo_actual + 1
+    WHERE id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo;
 END
 $$
 DELIMITER ;
@@ -490,6 +567,13 @@ CREATE TABLE `director_carrera` (
   `id_persona` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `director_carrera`
+--
+
+INSERT INTO `director_carrera` (`id_persona`) VALUES
+(2);
+
 -- --------------------------------------------------------
 
 --
@@ -514,6 +598,14 @@ CREATE TABLE `docente` (
   `grado_academico` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `docente`
+--
+
+INSERT INTO `docente` (`id_persona`, `registro_docente`, `grado_academico`) VALUES
+(2, 'DOC-001', 'Ph.D.'),
+(3, 'DOC-002', 'M.Sc.');
+
 -- --------------------------------------------------------
 
 --
@@ -527,6 +619,13 @@ CREATE TABLE `estudiante` (
   `anio_ingreso` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `estudiante`
+--
+
+INSERT INTO `estudiante` (`id_persona`, `ru`, `id_plan`, `anio_ingreso`) VALUES
+(4, '20210458', 1, 2021);
+
 -- --------------------------------------------------------
 
 --
@@ -535,8 +634,18 @@ CREATE TABLE `estudiante` (
 
 CREATE TABLE `gestion` (
   `id_gestion` int(11) NOT NULL,
-  `periodo` varchar(20) NOT NULL
+  `periodo` varchar(20) NOT NULL,
+  `estado` varchar(20) NOT NULL DEFAULT 'Activa'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `gestion`
+--
+
+INSERT INTO `gestion` (`id_gestion`, `periodo`, `estado`) VALUES
+(1, 'I/2026', 'Activa'),
+(2, 'II/2026', 'Activa'),
+(3, 'Verano/2026', 'Activa');
 
 -- --------------------------------------------------------
 
@@ -550,6 +659,17 @@ CREATE TABLE `horario` (
   `hora_inicio` time NOT NULL,
   `hora_fin` time NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `horario`
+--
+
+INSERT INTO `horario` (`id_horario`, `dia`, `hora_inicio`, `hora_fin`) VALUES
+(1, 'Lunes', '08:00:00', '10:00:00'),
+(2, 'Martes', '10:00:00', '12:00:00'),
+(3, 'Miércoles', '08:00:00', '10:00:00'),
+(4, 'Jueves', '14:00:00', '16:00:00'),
+(5, 'Viernes', '16:00:00', '18:00:00');
 
 -- --------------------------------------------------------
 
@@ -578,6 +698,22 @@ CREATE TABLE `materia` (
   `estado` varchar(20) NOT NULL DEFAULT 'Activo'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `materia`
+--
+
+INSERT INTO `materia` (`id_materia`, `sigla`, `nombre`, `carga_horaria`, `estado`) VALUES
+(1, 'INF-111', 'Introducción a la Programación', 80, 'Activo'),
+(2, 'INF-112', 'Organización de Computadoras', 80, 'Activo'),
+(3, 'INF-113', 'Laboratorio de Computación', 40, 'Activo'),
+(4, 'MAT-114', 'Matemática Básica', 80, 'Activo'),
+(5, 'LIN-115', 'Lenguaje', 40, 'Activo'),
+(6, 'INF-121', 'Algoritmos y Programación', 80, 'Activo'),
+(7, 'MAT-122', 'Cálculo I', 80, 'Activo'),
+(8, 'SIS-111', 'Teoría de Sistemas', 80, 'Activo'),
+(9, 'SIS-121', 'Análisis de Sistemas', 80, 'Activo'),
+(10, 'INF-131', 'Estructura de Datos', 80, 'Activo');
+
 -- --------------------------------------------------------
 
 --
@@ -590,6 +726,27 @@ CREATE TABLE `nota` (
   `id_criterio` int(11) NOT NULL,
   `nota_obtenida` float NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Disparadores `nota`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_bloquear_notas_gestion_cerrada` BEFORE INSERT ON `nota` FOR EACH ROW BEGIN
+    DECLARE v_estado_gestion VARCHAR(20);
+    
+    SELECT g.estado INTO v_estado_gestion
+    FROM detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    JOIN gestion g ON i.id_gestion = g.id_gestion
+    WHERE di.id_detalle = NEW.id_detalle;
+    
+    IF v_estado_gestion = 'Cerrada' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Operación denegada: La gestión académica ya está cerrada.';
+    END IF;
+END
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -629,7 +786,10 @@ CREATE TABLE `persona` (
 --
 
 INSERT INTO `persona` (`id_persona`, `ci`, `nombres`, `apellidos`, `fecha_nac`, `sexo`, `email`, `estado`) VALUES
-(1, '1111111', 'Analiza', 'Mamani Quispe', '1985-02-10', 'F', 'ana.admin@uni.edu.bo', 'A');
+(1, '1111111', 'Ana', 'Mamani Quispe', '1985-02-10', 'F', 'admin@uni.edu.bo', 'A'),
+(2, '2222222', 'Carlos', 'Condori Ramos', '1980-05-15', 'M', 'director@uni.edu.bo', 'A'),
+(3, '3333333', 'María', 'Gómez Vargas', '1988-09-20', 'F', 'docente@uni.edu.bo', 'A'),
+(4, '4444444', 'Juan', 'Pérez Ramos', '2002-11-03', 'M', 'estudiante@uni.edu.bo', 'A');
 
 -- --------------------------------------------------------
 
@@ -643,6 +803,15 @@ CREATE TABLE `plan_estudio` (
   `id_carrera` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `plan_estudio`
+--
+
+INSERT INTO `plan_estudio` (`id_plan`, `nombre`, `id_carrera`) VALUES
+(1, 'Plan 2021 - Informática', 1),
+(2, 'Plan 2022 - Sistemas', 2),
+(3, 'Plan 2015 - Informática', 1);
+
 -- --------------------------------------------------------
 
 --
@@ -655,6 +824,21 @@ CREATE TABLE `plan_materia` (
   `semestre` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `plan_materia`
+--
+
+INSERT INTO `plan_materia` (`id_plan`, `id_materia`, `semestre`) VALUES
+(1, 1, 1),
+(1, 2, 1),
+(1, 3, 1),
+(1, 4, 1),
+(1, 5, 1),
+(1, 6, 2),
+(1, 7, 2),
+(2, 8, 1),
+(2, 9, 2);
+
 -- --------------------------------------------------------
 
 --
@@ -666,6 +850,13 @@ CREATE TABLE `prerequisito` (
   `id_materia` int(11) NOT NULL,
   `id_materia_req` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `prerequisito`
+--
+
+INSERT INTO `prerequisito` (`id_plan`, `id_materia`, `id_materia_req`) VALUES
+(1, 6, 1);
 
 -- --------------------------------------------------------
 
@@ -721,7 +912,21 @@ CREATE TABLE `usuario` (
 --
 
 INSERT INTO `usuario` (`id_usuario`, `username`, `password_hash`, `id_persona`, `id_rol`, `estado`) VALUES
-(1, 'admin', '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeg6Lruj3vjPGga31lW', 1, 1, 'A');
+(1, 'admin', '$2b$10$Apu8F4a5whB9MI6KcERdMuaoRmjvWkHkbM80r3ed7dxve3ZVImxY.', 1, 1, 'A'),
+(2, 'director', '$2b$10$qYh50svv7SVbHh7katOxaegJxrneUGXvl/S6KU03eRH2uy.IVpa8C', 2, 2, 'A'),
+(3, 'docente', '$2b$10$Sgu0Ur804KVMuk8rel0WyOmfHeddEh3.q5/JCu0k47zW46qUP14Sy', 3, 3, 'A'),
+(4, 'estudiante', '$2b$10$6oKFCpOJqZufw4VBHHMppuZlPossjriLfjpaSRaCJQslEuo50COsa', 4, 4, 'A');
+
+--
+-- Disparadores `usuario`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_auditoria_nuevo_usuario` AFTER INSERT ON `usuario` FOR EACH ROW BEGIN
+    INSERT INTO auditoria (id_usuario, accion, fecha, hora)
+    VALUES (NEW.id_usuario, CONCAT('Creación de usuario: ', NEW.username), CURDATE(), CURTIME());
+END
+$$
+DELIMITER ;
 
 --
 -- Índices para tablas volcadas
@@ -732,7 +937,15 @@ INSERT INTO `usuario` (`id_usuario`, `username`, `password_hash`, `id_persona`, 
 --
 ALTER TABLE `administrativo`
   ADD PRIMARY KEY (`id_persona`),
-  ADD UNIQUE KEY `item` (`item`);
+  ADD UNIQUE KEY `item` (`item`),
+  ADD KEY `fk_admin_carrera` (`id_carrera`);
+
+--
+-- Indices de la tabla `auditoria`
+--
+ALTER TABLE `auditoria`
+  ADD PRIMARY KEY (`id_auditoria`),
+  ADD KEY `fk_auditoria_usuario` (`id_usuario`);
 
 --
 -- Indices de la tabla `aula`
@@ -893,16 +1106,22 @@ ALTER TABLE `usuario`
 --
 
 --
+-- AUTO_INCREMENT de la tabla `auditoria`
+--
+ALTER TABLE `auditoria`
+  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de la tabla `aula`
 --
 ALTER TABLE `aula`
-  MODIFY `id_aula` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_aula` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `carrera`
 --
 ALTER TABLE `carrera`
-  MODIFY `id_carrera` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_carrera` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT de la tabla `criterio_evaluacion`
@@ -920,13 +1139,13 @@ ALTER TABLE `detalle_inscripcion`
 -- AUTO_INCREMENT de la tabla `gestion`
 --
 ALTER TABLE `gestion`
-  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT de la tabla `horario`
 --
 ALTER TABLE `horario`
-  MODIFY `id_horario` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_horario` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `inscripcion`
@@ -938,7 +1157,7 @@ ALTER TABLE `inscripcion`
 -- AUTO_INCREMENT de la tabla `materia`
 --
 ALTER TABLE `materia`
-  MODIFY `id_materia` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_materia` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT de la tabla `nota`
@@ -950,13 +1169,13 @@ ALTER TABLE `nota`
 -- AUTO_INCREMENT de la tabla `persona`
 --
 ALTER TABLE `persona`
-  MODIFY `id_persona` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id_persona` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT de la tabla `plan_estudio`
 --
 ALTER TABLE `plan_estudio`
-  MODIFY `id_plan` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_plan` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT de la tabla `rol`
@@ -968,7 +1187,7 @@ ALTER TABLE `rol`
 -- AUTO_INCREMENT de la tabla `usuario`
 --
 ALTER TABLE `usuario`
-  MODIFY `id_usuario` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id_usuario` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Restricciones para tablas volcadas
@@ -978,7 +1197,14 @@ ALTER TABLE `usuario`
 -- Filtros para la tabla `administrativo`
 --
 ALTER TABLE `administrativo`
+  ADD CONSTRAINT `fk_admin_carrera` FOREIGN KEY (`id_carrera`) REFERENCES `carrera` (`id_carrera`),
   ADD CONSTRAINT `fk_admin_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`);
+
+--
+-- Filtros para la tabla `auditoria`
+--
+ALTER TABLE `auditoria`
+  ADD CONSTRAINT `fk_auditoria_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id_usuario`);
 
 --
 -- Filtros para la tabla `criterio_evaluacion`

@@ -6,6 +6,7 @@ export const iniciarSesion = async (username) => {
             u.id_usuario,
             u.username,
             u.password_hash,
+            u.estado,
             p.id_persona,
             COALESCE(p.nombres, u.username) AS nombres,
             COALESCE(p.apellidos, '') AS apellidos,
