@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 26-07-2026 a las 08:08:58
+-- Tiempo de generación: 26-07-2026 a las 09:49:06
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -74,6 +74,88 @@ END$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_old_aula` INT, IN `p_old_horario` INT, IN `p_new_aula` INT, IN `p_new_horario` INT)   BEGIN
     UPDATE se_cursa SET id_aula = p_new_aula, id_horario = p_new_horario
     WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo AND id_aula = p_old_aula AND id_horario = p_old_horario;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestion` INT)   BEGIN
+    DECLARE v_estado_gestion VARCHAR(20);
+    DECLARE v_total_afectados INT DEFAULT 0;
+    DECLARE v_aprobados INT DEFAULT 0;
+    DECLARE v_reprobados INT DEFAULT 0;
+
+    -- Manejador de errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    -- Verificar que la gestión existe y está activa
+    SELECT estado INTO v_estado_gestion
+    FROM gestion
+    WHERE id_gestion = p_id_gestion;
+
+    IF v_estado_gestion IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión no existe.';
+    END IF;
+
+    IF v_estado_gestion = 'Cerrada' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión ya está cerrada.';
+    END IF;
+
+    -- Actualizar nota_final y estado en detalle_inscripcion
+    UPDATE detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    LEFT JOIN (
+        SELECT 
+            n.id_detalle,
+            SUM(n.nota_obtenida * ce.ponderacion / 100) AS nota_calculada
+        FROM nota n
+        JOIN criterio_evaluacion ce ON n.id_criterio = ce.id_criterio
+        GROUP BY n.id_detalle
+    ) AS calculo ON di.id_detalle = calculo.id_detalle
+    SET 
+        di.nota_final = COALESCE(calculo.nota_calculada, 0),
+        di.estado = CASE 
+            WHEN COALESCE(calculo.nota_calculada, 0) >= 51 THEN 'Aprobado'
+            ELSE 'Reprobado'
+        END
+    WHERE i.id_gestion = p_id_gestion
+      AND di.estado = 'Inscrito';
+
+    -- Contar afectados
+    SELECT ROW_COUNT() INTO v_total_afectados;
+
+    -- Contar aprobados y reprobados
+    SELECT 
+        COALESCE(SUM(CASE WHEN di.estado = 'Aprobado' THEN 1 ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN di.estado = 'Reprobado' THEN 1 ELSE 0 END), 0)
+    INTO v_aprobados, v_reprobados
+    FROM detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    WHERE i.id_gestion = p_id_gestion
+      AND (di.estado = 'Aprobado' OR di.estado = 'Reprobado');
+
+    -- Cambiar estado de la gestión a Cerrada
+    UPDATE gestion 
+    SET estado = 'Cerrada' 
+    WHERE id_gestion = p_id_gestion;
+
+    COMMIT;
+
+    -- Devolver resumen final
+    SELECT 
+        g.periodo AS periodo,
+        v_total_afectados AS total_procesados,
+        v_aprobados AS aprobados,
+        v_reprobados AS reprobados,
+        'Cerrada' AS nuevo_estado
+    FROM gestion g
+    WHERE g.id_gestion = p_id_gestion;
+
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_aula` (IN `p_nombre` VARCHAR(50), IN `p_piso` VARCHAR(20), IN `p_ubicacion` VARCHAR(100), IN `p_capacidad` INT)   BEGIN
@@ -255,6 +337,84 @@ END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_se_cursa_por_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
     SELECT * FROM se_cursa WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_preview_cierre_gestion` (IN `p_id_gestion` INT)   BEGIN
+    DECLARE v_total INT DEFAULT 0;
+    DECLARE v_aprobados INT DEFAULT 0;
+    DECLARE v_reprobados INT DEFAULT 0;
+    DECLARE v_periodo VARCHAR(20);
+
+    -- Verificar que la gestión existe
+    SELECT periodo INTO v_periodo
+    FROM gestion
+    WHERE id_gestion = p_id_gestion;
+
+    IF v_periodo IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión no existe.';
+    END IF;
+
+    -- Calcular totales
+    SELECT COUNT(*),
+           COALESCE(SUM(CASE WHEN nota_proyectada >= 51 THEN 1 ELSE 0 END), 0),
+           COALESCE(SUM(CASE WHEN nota_proyectada < 51 THEN 1 ELSE 0 END), 0)
+    INTO v_total, v_aprobados, v_reprobados
+    FROM (
+        SELECT 
+            di.id_detalle,
+            COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) AS nota_proyectada
+        FROM detalle_inscripcion di
+        JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+        JOIN gestion g ON i.id_gestion = g.id_gestion
+        LEFT JOIN criterio_evaluacion ce 
+            ON di.id_materia = ce.id_materia 
+            AND di.id_paralelo = ce.id_paralelo
+        LEFT JOIN nota n 
+            ON di.id_detalle = n.id_detalle 
+            AND ce.id_criterio = n.id_criterio
+        WHERE i.id_gestion = p_id_gestion
+          AND di.estado = 'Inscrito'
+          AND g.estado = 'Activa'
+        GROUP BY di.id_detalle
+    ) AS t;
+
+    -- Devolver resumen
+    SELECT 
+        v_periodo AS periodo,
+        v_total AS total,
+        v_aprobados AS aprobados,
+        v_reprobados AS reprobados;
+
+    -- Devolver detalle por estudiante
+    SELECT 
+        CONCAT(p.nombres, ' ', p.apellidos) AS estudiante,
+        e.ru AS ru,
+        m.sigla AS sigla_materia,
+        m.nombre AS materia,
+        COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) AS nota_final_proyectada,
+        CASE 
+            WHEN COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) >= 51 THEN 'Aprobado'
+            ELSE 'Reprobado'
+        END AS estado_proyectado
+    FROM detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    JOIN gestion g ON i.id_gestion = g.id_gestion
+    JOIN estudiante e ON i.id_estudiante = e.id_persona
+    JOIN persona p ON e.id_persona = p.id_persona
+    JOIN materia m ON di.id_materia = m.id_materia
+    LEFT JOIN criterio_evaluacion ce 
+        ON di.id_materia = ce.id_materia 
+        AND di.id_paralelo = ce.id_paralelo
+    LEFT JOIN nota n 
+        ON di.id_detalle = n.id_detalle 
+        AND ce.id_criterio = n.id_criterio
+    WHERE i.id_gestion = p_id_gestion
+      AND di.estado = 'Inscrito'
+      AND g.estado = 'Activa'
+    GROUP BY di.id_detalle, p.nombres, p.apellidos, e.ru, m.sigla, m.nombre
+    ORDER BY p.apellidos, p.nombres, m.nombre;
+
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_realizar_inscripcion` (IN `p_id_estudiante` INT, IN `p_id_gestion` INT, IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN

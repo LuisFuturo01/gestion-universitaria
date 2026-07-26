@@ -83,7 +83,7 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_ya_inscrito` (`p_id_estudiante` I
 END$$
 ```
 
-## 2. PROCEDIMIENTOS ALMACENADOS (58)
+## 2. PROCEDIMIENTOS ALMACENADOS (60)
 
 ### 2.1 Procedimientos CRUD - Aula (5)
 
@@ -182,7 +182,12 @@ END$$
 - `sp_realizar_inscripcion` (con transacción y validaciones)
 - `sp_retirar_inscripcion` (con transacción)
 
-## 3. PROCEDIMIENTOS CON TRANSACCIONES (2)
+### 2.14 Procedimientos de Cierre de Gestión (2)
+
+- `sp_preview_cierre_gestion` (previsualización sin aplicar cambios)
+- `sp_cerrar_gestion` (con transacción y cambios definitivos)
+
+## 3. PROCEDIMIENTOS CON TRANSACCIONES (3)
 
 ### 3.1 sp_realizar_inscripcion
 
@@ -241,6 +246,176 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_retirar_inscripcion` (IN `p_id_d
     END IF;
     UPDATE DETALLE_INSCRIPCION SET estado='Abandono' WHERE id_detalle=p_id_detalle;
     COMMIT;
+END$$
+```
+
+### 3.3 sp_preview_cierre_gestion
+
+```sql
+CREATE PROCEDURE sp_preview_cierre_gestion(IN p_id_gestion INT)
+BEGIN
+    DECLARE v_total INT DEFAULT 0;
+    DECLARE v_aprobados INT DEFAULT 0;
+    DECLARE v_reprobados INT DEFAULT 0;
+    DECLARE v_periodo VARCHAR(20);
+
+    -- Verificar que la gestión existe
+    SELECT periodo INTO v_periodo
+    FROM gestion
+    WHERE id_gestion = p_id_gestion;
+
+    IF v_periodo IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión no existe.';
+    END IF;
+
+    -- Calcular totales
+    SELECT COUNT(*),
+           COALESCE(SUM(CASE WHEN nota_proyectada >= 51 THEN 1 ELSE 0 END), 0),
+           COALESCE(SUM(CASE WHEN nota_proyectada < 51 THEN 1 ELSE 0 END), 0)
+    INTO v_total, v_aprobados, v_reprobados
+    FROM (
+        SELECT 
+            di.id_detalle,
+            COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) AS nota_proyectada
+        FROM detalle_inscripcion di
+        JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+        JOIN gestion g ON i.id_gestion = g.id_gestion
+        LEFT JOIN criterio_evaluacion ce 
+            ON di.id_materia = ce.id_materia 
+            AND di.id_paralelo = ce.id_paralelo
+        LEFT JOIN nota n 
+            ON di.id_detalle = n.id_detalle 
+            AND ce.id_criterio = n.id_criterio
+        WHERE i.id_gestion = p_id_gestion
+          AND di.estado = 'Inscrito'
+          AND g.estado = 'Activa'
+        GROUP BY di.id_detalle
+    ) AS t;
+
+    -- Devolver resumen
+    SELECT 
+        v_periodo AS periodo,
+        v_total AS total,
+        v_aprobados AS aprobados,
+        v_reprobados AS reprobados;
+
+    -- Devolver detalle por estudiante
+    SELECT 
+        CONCAT(p.nombres, ' ', p.apellidos) AS estudiante,
+        e.ru AS ru,
+        m.sigla AS sigla_materia,
+        m.nombre AS materia,
+        COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) AS nota_final_proyectada,
+        CASE 
+            WHEN COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0) >= 51 THEN 'Aprobado'
+            ELSE 'Reprobado'
+        END AS estado_proyectado
+    FROM detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    JOIN gestion g ON i.id_gestion = g.id_gestion
+    JOIN estudiante e ON i.id_estudiante = e.id_persona
+    JOIN persona p ON e.id_persona = p.id_persona
+    JOIN materia m ON di.id_materia = m.id_materia
+    LEFT JOIN criterio_evaluacion ce 
+        ON di.id_materia = ce.id_materia 
+        AND di.id_paralelo = ce.id_paralelo
+    LEFT JOIN nota n 
+        ON di.id_detalle = n.id_detalle 
+        AND ce.id_criterio = n.id_criterio
+    WHERE i.id_gestion = p_id_gestion
+      AND di.estado = 'Inscrito'
+      AND g.estado = 'Activa'
+    GROUP BY di.id_detalle, p.nombres, p.apellidos, e.ru, m.sigla, m.nombre
+    ORDER BY p.apellidos, p.nombres, m.nombre;
+
+END$$
+```
+
+### 3.4 sp_cerrar_gestion
+
+```sql
+CREATE PROCEDURE sp_cerrar_gestion(IN p_id_gestion INT)
+BEGIN
+    DECLARE v_estado_gestion VARCHAR(20);
+    DECLARE v_total_afectados INT DEFAULT 0;
+    DECLARE v_aprobados INT DEFAULT 0;
+    DECLARE v_reprobados INT DEFAULT 0;
+
+    -- Manejador de errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    -- Verificar que la gestión existe y está activa
+    SELECT estado INTO v_estado_gestion
+    FROM gestion
+    WHERE id_gestion = p_id_gestion;
+
+    IF v_estado_gestion IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión no existe.';
+    END IF;
+
+    IF v_estado_gestion = 'Cerrada' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'La gestión ya está cerrada.';
+    END IF;
+
+    -- Actualizar nota_final y estado en detalle_inscripcion
+    UPDATE detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    LEFT JOIN (
+        SELECT 
+            n.id_detalle,
+            SUM(n.nota_obtenida * ce.ponderacion / 100) AS nota_calculada
+        FROM nota n
+        JOIN criterio_evaluacion ce ON n.id_criterio = ce.id_criterio
+        GROUP BY n.id_detalle
+    ) AS calculo ON di.id_detalle = calculo.id_detalle
+    SET 
+        di.nota_final = COALESCE(calculo.nota_calculada, 0),
+        di.estado = CASE 
+            WHEN COALESCE(calculo.nota_calculada, 0) >= 51 THEN 'Aprobado'
+            ELSE 'Reprobado'
+        END
+    WHERE i.id_gestion = p_id_gestion
+      AND di.estado = 'Inscrito';
+
+    -- Contar afectados
+    SELECT ROW_COUNT() INTO v_total_afectados;
+
+    -- Contar aprobados y reprobados
+    SELECT 
+        COALESCE(SUM(CASE WHEN di.estado = 'Aprobado' THEN 1 ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN di.estado = 'Reprobado' THEN 1 ELSE 0 END), 0)
+    INTO v_aprobados, v_reprobados
+    FROM detalle_inscripcion di
+    JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+    WHERE i.id_gestion = p_id_gestion
+      AND (di.estado = 'Aprobado' OR di.estado = 'Reprobado');
+
+    -- Cambiar estado de la gestión a Cerrada
+    UPDATE gestion 
+    SET estado = 'Cerrada' 
+    WHERE id_gestion = p_id_gestion;
+
+    COMMIT;
+
+    -- Devolver resumen final
+    SELECT 
+        g.periodo AS periodo,
+        v_total_afectados AS total_procesados,
+        v_aprobados AS aprobados,
+        v_reprobados AS reprobados,
+        'Cerrada' AS nuevo_estado
+    FROM gestion g
+    WHERE g.id_gestion = p_id_gestion;
+
 END$$
 ```
 
@@ -343,7 +518,7 @@ END
 | Tipo de Objeto | Cantidad |
 | --- | --- |
 | Funciones | 7 |
-| Procedimientos | 58 |
-| Procedimientos con Transacciones | 2 |
+| Procedimientos | 60 |
+| Procedimientos con Transacciones | 3 |
 | Cursores | 0 |
 | Triggers | 8 |
