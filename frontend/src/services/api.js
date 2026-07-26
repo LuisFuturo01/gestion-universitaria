@@ -47,6 +47,13 @@ export const catalogService = {
   docentes: () => apiClient.get("/actores/docentes"),
 };
 
+export const paraleloService = {
+  sinDocente: (id_gestion) => apiClient.get("/paralelos/sin-docente", { params: { id_gestion } }),
+  porDocente: (id_docente, id_gestion) => apiClient.get(`/paralelos/docente/${id_docente}`, { params: { id_gestion } }),
+  asignarDocente: (id_materia, id_paralelo, id_docente) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/asignar-docente`, { id_docente }),
+  desasignarDocente: (id_materia, id_paralelo) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/desasignar-docente`),
+};
+
 export const enrollmentService = {
   listar: () => apiClient.get("/inscripciones"),
   obtenerPorId: (id) => apiClient.get(`/inscripciones/${id}`),
@@ -67,6 +74,7 @@ export const gradesService = {
 };
 
 export const gestionCloseService = {
+  iniciar: (payload) => apiClient.post("/gestiones/iniciar", payload),
   preview: (id_gestion) => apiClient.get(`/gestiones/${id_gestion}/preview-cierre`),
   cerrar: (id_gestion) => apiClient.post(`/gestiones/${id_gestion}/cerrar`),
   auditoria: () => apiClient.get("/gestiones/auditoria"),

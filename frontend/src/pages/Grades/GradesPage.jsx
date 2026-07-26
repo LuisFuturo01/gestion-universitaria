@@ -26,29 +26,45 @@ export default function GradesPage() {
 function VistaDocente({ session, data }) {
   const { showSuccess, showError, showWarning, showInfo } = useToast();
   const gestionActiva = data.getGestionActiva();
-  const misParalelos = data.paralelos.filter(
-    (p) => p.id_docente === session.id_persona && p.id_gestion === gestionActiva?.id_gestion
-  );
-  const [seleccion, setSeleccion] = useState(misParalelos[0] || null);
+  
+  const [seleccionId, setSeleccionId] = useState(null);
   const [nuevoCriterio, setNuevoCriterio] = useState({ nombre: "", ponderacion: "" });
+
+  // misParalelos recalculado dinámicamente cuando data.paralelos se actualiza
+  const misParalelos = useMemo(() => {
+    if (!session?.id_persona) return [];
+    return (data.paralelos || []).filter(
+      (p) => Number(p.id_docente) === Number(session.id_persona) && (!gestionActiva || p.id_gestion === gestionActiva.id_gestion)
+    );
+  }, [data.paralelos, session?.id_persona, gestionActiva]);
+
+  // Selección activa computada
+  const seleccion = useMemo(() => {
+    if (misParalelos.length === 0) return null;
+    if (seleccionId) {
+      const match = misParalelos.find((p) => `${p.id_materia}-${p.id_paralelo}` === seleccionId);
+      if (match) return match;
+    }
+    return misParalelos[0];
+  }, [misParalelos, seleccionId]);
 
   if (!seleccion) {
     return (
       <div>
-        <SectionHeader title="Notas y Ponderaciones" subtitle="No tiene paralelos asignados en la gestión activa" />
-        <EmptyState text="Cuando se le asigne un paralelo en esta gestión, podrá definir las ponderaciones y registrar calificaciones." />
+        <SectionHeader title="Notas y Ponderaciones" subtitle={`Gestión Académica Activa: ${gestionActiva?.periodo || 'I/2026'}`} />
+        <EmptyState text="No tiene asignaturas asignadas en la gestión activa. Solicite impartir una materia desde 'Oferta Académica'." />
       </div>
     );
   }
 
   const materia = data.getMateria(seleccion.id_materia);
-  const criterios = data.criterios.filter((c) => c.id_materia === seleccion.id_materia && c.id_paralelo === seleccion.id_paralelo);
+  const criterios = (data.criterios || []).filter((c) => c.id_materia === seleccion.id_materia && c.id_paralelo === seleccion.id_paralelo);
   const sumaPonderacion = criterios.reduce((acc, c) => acc + Number(c.ponderacion), 0);
 
-  const inscritos = data.detalle
+  const inscritos = (data.detalle || [])
     .filter((d) => d.id_materia === seleccion.id_materia && d.id_paralelo === seleccion.id_paralelo)
     .map((d) => {
-      const insc = data.inscripciones.find((i) => i.id_inscripcion === d.id_inscripcion);
+      const insc = (data.inscripciones || []).find((i) => i.id_inscripcion === d.id_inscripcion);
       const persona = data.getPersona(insc?.id_estudiante);
       return { detalle: d, persona };
     });
@@ -87,18 +103,15 @@ function VistaDocente({ session, data }) {
     <div>
       <SectionHeader
         title="Planilla de Notas y Criterios"
-        subtitle={`Paralelo ${seleccion.nombre} — ${materia?.sigla}`}
+        subtitle={`Paralelo ${seleccion.nombre} — ${materia?.sigla || 'Materia'} (${materia?.nombre || ''})`}
         actions={
           <select
             value={`${seleccion.id_materia}-${seleccion.id_paralelo}`}
-            onChange={(e) => {
-              const [im, ip] = e.target.value.split("-").map(Number);
-              setSeleccion(misParalelos.find((p) => p.id_materia === im && p.id_paralelo === ip));
-            }}
+            onChange={(e) => setSeleccionId(e.target.value)}
           >
             {misParalelos.map((p) => {
               const m = data.getMateria(p.id_materia);
-              return <option key={`${p.id_materia}-${p.id_paralelo}`} value={`${p.id_materia}-${p.id_paralelo}`}>{m?.sigla} - Paralelo {p.nombre}</option>;
+              return <option key={`${p.id_materia}-${p.id_paralelo}`} value={`${p.id_materia}-${p.id_paralelo}`}>{m?.sigla || `MAT-${p.id_materia}`} - Paralelo {p.nombre}</option>;
             })}
           </select>
         }

@@ -67,7 +67,7 @@ export default function DashboardPage() {
           <SectionHeader title="Accesos Rápidos de Dirección" />
           <ul className="quick-links">
             <li><a href="/reportes">Reportes y Métricas Académicas de la Carrera</a></li>
-            <li><a href="/cierre-gestion">Verificación de Actas y Cierre de Gestión</a></li>
+            <li><a href="/cierre-gestion">Apertura y Cierre de Gestión Académica</a></li>
             <li><a href="/historial">Auditoría de Historial Académico de Estudiantes</a></li>
           </ul>
         </div>

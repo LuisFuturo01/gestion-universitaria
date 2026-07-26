@@ -9,7 +9,9 @@ router.get('/auditoria', gestionController.getAuditoria);
 router.post('/', gestionController.crearGestion);
 router.get('/', gestionController.getGestiones);
 
-// Cierre de gestión
+// Cierre y apertura de gestión
+router.post('/iniciar', gestionController.iniciarGestion);
+router.post('/reparar-paralelos', gestionController.repararParalelos);
 router.get('/:id/preview-cierre', gestionController.previewCierreGestion);
 router.post('/:id/cerrar', gestionController.cerrarGestion);
 

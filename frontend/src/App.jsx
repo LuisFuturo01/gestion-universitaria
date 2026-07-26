@@ -64,7 +64,7 @@ function App() {
                 <Route
                   path="/cierre-gestion"
                   element={
-                    <ProtectedRoute roles={["DIRECTOR"]}>
+                    <ProtectedRoute roles={["DIRECTOR", "ADMIN"]}>
                       <GestionClosePage />
                     </ProtectedRoute>
                   }

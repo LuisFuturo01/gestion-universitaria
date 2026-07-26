@@ -9,7 +9,7 @@ const MENU = [
   { to: "/notas", icon: "🧮", label: "Notas y Ponderaciones", roles: ["DOCENTE", "ESTUDIANTE", "ADMIN", "DIRECTOR"] },
   { to: "/historial", icon: "📖", label: "Historial Académico", roles: ["ADMIN", "DIRECTOR", "ESTUDIANTE"] },
   { to: "/reportes", icon: "📊", label: "Reportes y Estadísticas", roles: ["ADMIN", "DIRECTOR"] },
-  { to: "/cierre-gestion", icon: "🔒", label: "Cierre de Gestión", roles: ["DIRECTOR"] },
+  { to: "/cierre-gestion", icon: "🏛️", label: "Apertura / Cierre de Gestión", roles: ["DIRECTOR", "ADMIN"] },
 ];
 
 export default function Sidebar({ open, onClose }) {

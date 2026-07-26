@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { catalogService, enrollmentService, gradesService, usersService, gestionCloseService } from "../services/api";
+import { catalogService, enrollmentService, gradesService, usersService, gestionCloseService, paraleloService } from "../services/api";
 import { NOTA_APROBACION, fullName } from "../data/mockData";
 
 const DataContext = createContext(null);
@@ -376,10 +376,31 @@ export function DataProvider({ children }) {
     return res.data; // { resumen: {...}, detalle: [...] }
   };
 
-  // Cierre definitivo — llama a sp_cerrar_gestion vía API (transacción en MySQL)
+  // Cierre definitivo de gestión — llama a sp_cerrar_gestion vía API
   const cerrarGestion = async (id_gestion) => {
     const res = await gestionCloseService.cerrar(id_gestion);
-    await reloadFromBackend(); // Recargar todo después del cierre
+    await reloadFromBackend();
+    return res.data;
+  };
+
+  // Iniciar nueva gestión con paralelos automáticos
+  const iniciarGestion = async (periodo) => {
+    const res = await gestionCloseService.iniciar({ periodo });
+    await reloadFromBackend();
+    return res.data;
+  };
+
+  // Asignar docente a un paralelo
+  const asignarDocenteParalelo = async (id_materia, id_paralelo, id_docente) => {
+    const res = await paraleloService.asignarDocente(id_materia, id_paralelo, id_docente);
+    await reloadFromBackend();
+    return res.data;
+  };
+
+  // Desasignar docente de un paralelo
+  const desasignarDocenteParalelo = async (id_materia, id_paralelo) => {
+    const res = await paraleloService.desasignarDocente(id_materia, id_paralelo);
+    await reloadFromBackend();
     return res.data;
   };
 
@@ -391,6 +412,7 @@ export function DataProvider({ children }) {
       roles: roles.length > 0 ? roles : [{ id_rol: 1, nombre: "Administrador" }, { id_rol: 2, nombre: "Director" }, { id_rol: 3, nombre: "Docente" }, { id_rol: 4, nombre: "Estudiante" }],
       aulas,
       horarios,
+      seCursa,
       usuarios,
       tieneRol,
       personas,
@@ -431,6 +453,9 @@ export function DataProvider({ children }) {
       calcularNotaFinal,
       previewCierreGestion,
       cerrarGestion,
+      iniciarGestion,
+      asignarDocenteParalelo,
+      desasignarDocenteParalelo,
     }),
     [
       carreras,

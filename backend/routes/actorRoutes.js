@@ -9,36 +9,36 @@ import { verificarToken } from "../middlewares/auth.js";
 
 const actorRutas = express.Router();
 
-actorRutas.get("/", verificarToken, obtActores);
-actorRutas.get("/:id", verificarToken, obtActorPorID);
-actorRutas.post("/", verificarToken, insertaActor);
-actorRutas.patch("/:id", verificarToken, actualizaActor);
-actorRutas.delete("/:id", verificarToken, eliminaActor);
-
+// Rutas estáticas específicas (deben ir antes que /:id)
 actorRutas.get("/estudiantes", verificarToken, obtEstudiantes);
 actorRutas.get("/estudiantes/:id", verificarToken, obtEstudiantePorID);
 actorRutas.post("/estudiantes", verificarToken, insertaEstudiante);
 actorRutas.patch("/estudiantes/:id", verificarToken, actualizaEstudiante);
 actorRutas.delete("/estudiantes/:id", verificarToken, eliminaEstudiante);
 
-actorRutas.get("/docentes",verificarToken,obtDocentes);
-actorRutas.get("/docentes/:id",verificarToken,obtDocentePorID);
-actorRutas.post("/docentes",verificarToken,insertaDocente);
-actorRutas.patch("/docentes/:id",verificarToken,actualizaDocente);
-actorRutas.delete("/docentes/:id",verificarToken,eliminaDocente);
+actorRutas.get("/docentes", verificarToken, obtDocentes);
+actorRutas.get("/docentes/:id", verificarToken, obtDocentePorID);
+actorRutas.post("/docentes", verificarToken, insertaDocente);
+actorRutas.patch("/docentes/:id", verificarToken, actualizaDocente);
+actorRutas.delete("/docentes/:id", verificarToken, eliminaDocente);
 
-actorRutas.get("/administrativos",verificarToken,obtAdministrativos);
-actorRutas.get("/administrativos/:id",verificarToken,obtAdministrativoPorID);
-actorRutas.post("/administrativos",verificarToken,insertaAdministrativo);
-actorRutas.patch("/administrativos/:id",verificarToken,actualizaAdministrativo);
-actorRutas.delete("/administrativos/:id",verificarToken,eliminaAdministrativo);
+actorRutas.get("/administrativos", verificarToken, obtAdministrativos);
+actorRutas.get("/administrativos/:id", verificarToken, obtAdministrativoPorID);
+actorRutas.post("/administrativos", verificarToken, insertaAdministrativo);
+actorRutas.patch("/administrativos/:id", verificarToken, actualizaAdministrativo);
+actorRutas.delete("/administrativos/:id", verificarToken, eliminaAdministrativo);
 
-actorRutas.get("/directores",verificarToken,obtDirectores);
-actorRutas.get("/directores/:id",verificarToken,obtDirectorPorID);
-actorRutas.post("/directores",verificarToken,insertaDirector);
-actorRutas.patch("/directores/:id",verificarToken,actualizaDirectorCarrera);
-actorRutas.delete("/directores/:id",verificarToken,eliminaDirectorCarrera);
+actorRutas.get("/directores", verificarToken, obtDirectores);
+actorRutas.get("/directores/:id", verificarToken, obtDirectorPorID);
+actorRutas.post("/directores", verificarToken, insertaDirector);
+actorRutas.patch("/directores/:id", verificarToken, actualizaDirectorCarrera);
+actorRutas.delete("/directores/:id", verificarToken, eliminaDirectorCarrera);
 
-
+// Rutas genéricas por ID persona
+actorRutas.get("/", verificarToken, obtActores);
+actorRutas.get("/:id", verificarToken, obtActorPorID);
+actorRutas.post("/", verificarToken, insertaActor);
+actorRutas.patch("/:id", verificarToken, actualizaActor);
+actorRutas.delete("/:id", verificarToken, eliminaActor);
 
 export default actorRutas;

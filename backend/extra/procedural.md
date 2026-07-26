@@ -623,7 +623,7 @@ END$$
 
 No se encontraron cursores en la base de datos.
 
-## 5. TRIGGERS (24)
+## 5. TRIGGERS (25)
 
 ### 5.1 Triggers de CRITERIO_EVALUACION (1)
 
@@ -645,27 +645,44 @@ END
 
 ### 5.2 Triggers de DETALLE_INSCRIPCION (6)
 
-#### 5.2.1 trg_aumentar_cupo (AFTER INSERT)
-Incrementa el cupo actual al inscribir un estudiante.
+#### 5.2.1 trg_validar_inscripcion_paralelo_cupo (BEFORE INSERT)
+Valida que el estudiante si pueda inscribirse por cupo, y que este el paralelo
 
 ```sql
-CREATE TRIGGER `trg_aumentar_cupo` AFTER INSERT ON `detalle_inscripcion` FOR EACH ROW 
+CREATE TRIGGER `trg_validar_inscripcion_paralelo_cupo` 
+BEFORE INSERT ON `detalle_inscripcion` 
+FOR EACH ROW 
 BEGIN
-    UPDATE PARALELO SET cupo_actual=cupo_actual+1 WHERE id_materia=NEW.id_materia AND id_paralelo=NEW.id_paralelo;
+    DECLARE v_existe_paralelo INT DEFAULT 0;
+    DECLARE v_cupo_maximo INT DEFAULT 0;
+    DECLARE v_cupo_actual INT DEFAULT 0;
+    
+    -- Verificar que el paralelo existe
+    SELECT COUNT(*) INTO v_existe_paralelo
+    FROM paralelo
+    WHERE id_materia = NEW.id_materia 
+      AND id_paralelo = NEW.id_paralelo;
+    
+    IF v_existe_paralelo = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: El paralelo especificado no existe para esta materia.';
+    END IF;
+    
+    -- Verificar cupo disponible
+    SELECT cupo_maximo, cupo_actual 
+    INTO v_cupo_maximo, v_cupo_actual
+    FROM paralelo
+    WHERE id_materia = NEW.id_materia 
+      AND id_paralelo = NEW.id_paralelo;
+    
+    IF v_cupo_actual >= v_cupo_maximo THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: No hay cupos disponibles en este paralelo.';
+    END IF;
 END
 ```
 
-#### 5.2.2 trg_incrementar_cupo_actual (AFTER INSERT)
-Versión mejorada de trg_aumentar_cupo (duplicado).
-
-```sql
-CREATE TRIGGER `trg_incrementar_cupo_actual` AFTER INSERT ON `detalle_inscripcion` FOR EACH ROW 
-BEGIN
-    UPDATE paralelo SET cupo_actual = cupo_actual + 1 WHERE id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo;
-END
-```
-
-#### 5.2.3 trg_disminuir_cupo (AFTER DELETE)
+#### 5.2.2 trg_disminuir_cupo (AFTER DELETE)
 Decrementa el cupo actual al eliminar una inscripción.
 
 ```sql
@@ -675,7 +692,7 @@ BEGIN
 END
 ```
 
-#### 5.2.4 trg_decrementar_cupo_actual (AFTER DELETE)
+#### 5.2.3 trg_decrementar_cupo_actual (AFTER DELETE)
 Versión mejorada con GREATEST para evitar valores negativos (duplicado).
 
 ```sql
@@ -685,7 +702,7 @@ BEGIN
 END
 ```
 
-#### 5.2.5 trg_liberar_cupo_abandono (AFTER UPDATE)
+#### 5.2.4 trg_liberar_cupo_abandono (AFTER UPDATE)
 Libera el cupo cuando un estudiante abandona la materia.
 
 ```sql
@@ -697,7 +714,7 @@ BEGIN
 END
 ```
 
-#### 5.2.6 trg_validar_limite_inscripcion (BEFORE INSERT)
+#### 5.2.5 trg_validar_limite_inscripcion (BEFORE INSERT)
 Limita el número de materias por gestión (6 en semestre regular, 2 en verano/invierno).
 
 ```sql
@@ -935,7 +952,41 @@ CREATE TRIGGER `trg_validar_docente_horario` BEFORE INSERT ON `se_cursa` FOR EAC
 END
 ```
 
-### 5.8 Triggers de USUARIO (3)
+### 5.8 Triggers de PARALELO (1)
+
+#### 5.8.1 trg_validar_max_paralelos_docente (BEFORE UPDATE)
+Valida que un docente no pueda dirigir más de 3 paralelos en la misma gestión. Este trigger se activa cuando un docente solicita dirigir una materia (asignación vía UPDATE).
+
+```sql
+CREATE TRIGGER trg_validar_max_paralelos_docente
+BEFORE UPDATE ON paralelo
+FOR EACH ROW
+BEGIN
+    DECLARE v_cantidad INT DEFAULT 0;
+    
+    -- Solo validar cuando se asigna un docente (no cuando se quita)
+    IF NEW.id_docente IS NOT NULL THEN
+        SELECT COUNT(*) INTO v_cantidad
+        FROM paralelo
+        WHERE id_docente = NEW.id_docente
+          AND id_gestion = NEW.id_gestion
+          AND NOT (id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo);
+        
+        IF v_cantidad >= 3 THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Error: El docente ya dirige 3 paralelos en esta gestión. No puede tomar más.';
+        END IF;
+    END IF;
+END
+```
+
+> **Nota:** La columna `id_docente` en la tabla `paralelo` fue modificada para aceptar NULL:
+> ```sql
+> ALTER TABLE paralelo MODIFY COLUMN id_docente INT(11) DEFAULT NULL;
+> ```
+> Esto permite que los paralelos se creen sin docente durante la apertura de gestión, y los docentes soliciten dirigirlos después.
+
+### 5.9 Triggers de USUARIO (3)
 
 #### 5.8.1 trg_auditoria_nuevo_usuario (AFTER INSERT)
 Registra en auditoría la creación de un usuario.
@@ -948,23 +999,30 @@ END
 ```
 
 #### 5.8.2 trg_auto_username_usuario (BEFORE INSERT)
-Genera automáticamente el username si no se proporciona.
+Genera automáticamente el username si no se proporciona y valida la presencia obligatoria de la contraseña hasheada con BCrypt desde el backend.
 
 ```sql
-CREATE TRIGGER `trg_auto_username_usuario` BEFORE INSERT ON `usuario` FOR EACH ROW BEGIN
+CREATE TRIGGER trg_auto_username_usuario 
+BEFORE INSERT ON usuario 
+FOR EACH ROW 
+BEGIN
     DECLARE v_nombres VARCHAR(80);
     DECLARE v_apellidos VARCHAR(80);
     DECLARE v_ci VARCHAR(20);
     
+    -- Obtener datos de persona
     SELECT nombres, apellidos, ci INTO v_nombres, v_apellidos, v_ci
     FROM persona WHERE id_persona = NEW.id_persona;
     
+    -- Generar username si viene vacío
     IF NEW.username IS NULL OR NEW.username = '' THEN
         SET NEW.username = fn_generar_username(v_nombres, v_apellidos);
     END IF;
     
+    -- Validar que la contraseña hasheada no esté vacía (Generada con BCrypt en backend)
     IF NEW.password_hash IS NULL OR NEW.password_hash = '' THEN
-        SET NEW.password_hash = fn_extraer_numero_ci(v_ci);
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: La contraseña debe ser generada en el backend con BCrypt.';
     END IF;
 END
 ```
@@ -983,16 +1041,28 @@ CREATE TRIGGER `trg_validar_usuario_unico` BEFORE INSERT ON `usuario` FOR EACH R
 END
 ```
 
-## 6. RESUMEN COMPLETO
+## 6. RESTRICCIONES DE LLAVES FORÁNEAS (ON DELETE CASCADE)
 
-| Tipo de Objeto | Cantidad |
-| --- | --- |
-| Funciones | 13 |
-| Procedimientos CRUD | 52 |
-| Procedimientos Especiales | 2 |
-| Procedimientos de Negocio | 2 |
-| Procedimientos de Cierre | 2 |
-| Procedimientos con Transacciones | 5 |
-| Cursores | 0 |
-| Triggers | 24 |
-| **TOTAL** | **96** |
+Para evitar bloqueos al eliminar registros dependientes de una persona (estudiante, docente, usuario, administrativo), se configuraron las siguientes llaves foráneas en cascada:
+
+```sql
+ALTER TABLE usuario ADD CONSTRAINT fk_usuario_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
+ALTER TABLE estudiante ADD CONSTRAINT fk_estudiante_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
+ALTER TABLE docente ADD CONSTRAINT fk_docente_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
+ALTER TABLE administrativo ADD CONSTRAINT fk_admin_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
+```
+
+## 7. RESUMEN COMPLETO DE OBJETOS DE BASE DE DATOS
+
+| Tipo de Objeto | Cantidad | Descripción |
+| --- | --- | --- |
+| Funciones | 13 | Lógica de validación, formato y cupos |
+| Procedimientos CRUD | 52 | Operaciones directas de creación, consulta y actualización |
+| Procedimientos Especiales & Seguridad | 6 | `sp_insertar_estudiante_completo_seguro`, `sp_insertar_persona_usuario_seguro`, `sp_set_audit_user`, etc. |
+| Procedimientos de Negocio y Paralelos | 3 | `sp_realizar_inscripcion`, `sp_retirar_inscripcion`, `sp_aperturar_paralelo_completo` |
+| Procedimientos de Cierre | 2 | `sp_preview_cierre_gestion`, `sp_cerrar_gestion` |
+| Procedimientos con Transacciones & Locks | 9 | Manejo de concurrencia con `GET_LOCK()` / `RELEASE_LOCK()` y `@current_user_id` |
+| Triggers | 25 | Triggers de auditoría, cupos, límites, integridad y asignación docente |
+| Restricciones Cascade | 4 | Llaves foráneas con `ON DELETE CASCADE` |
+| Alteraciones de Columna | 1 | `paralelo.id_docente` → `DEFAULT NULL` |
+| **TOTAL** | **115** | **Objetos totales activos en MariaDB / MySQL** |

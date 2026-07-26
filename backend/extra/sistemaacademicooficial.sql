@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 26-07-2026 a las 13:36:38
+-- Tiempo de generación: 26-07-2026 a las 19:07:10
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -2083,7 +2083,9 @@ INSERT INTO `auditoria` (`id_auditoria`, `id_usuario`, `tipo`, `accion`, `fecha`
 (2039, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:28:56'),
 (2040, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:33:07'),
 (2041, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:35:15'),
-(2042, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:35:37');
+(2042, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:35:37'),
+(2043, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '12:45:31'),
+(2044, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '12:46:25');
 
 -- --------------------------------------------------------
 
@@ -2239,28 +2241,10 @@ CREATE TABLE `detalle_inscripcion` (
 -- Disparadores `detalle_inscripcion`
 --
 DELIMITER $$
-CREATE TRIGGER `trg_aumentar_cupo` AFTER INSERT ON `detalle_inscripcion` FOR EACH ROW BEGIN
-    UPDATE PARALELO
-    SET cupo_actual=cupo_actual+1
-    WHERE id_materia=NEW.id_materia
-    AND id_paralelo=NEW.id_paralelo;
-END
-$$
-DELIMITER ;
-DELIMITER $$
 CREATE TRIGGER `trg_decrementar_cupo_actual` AFTER DELETE ON `detalle_inscripcion` FOR EACH ROW BEGIN
     UPDATE paralelo
     SET cupo_actual = GREATEST(cupo_actual - 1, 0)
     WHERE id_materia = OLD.id_materia AND id_paralelo = OLD.id_paralelo;
-END
-$$
-DELIMITER ;
-DELIMITER $$
-CREATE TRIGGER `trg_disminuir_cupo` AFTER DELETE ON `detalle_inscripcion` FOR EACH ROW BEGIN
-    UPDATE PARALELO
-    SET cupo_actual=cupo_actual-1
-    WHERE id_materia=OLD.id_materia
-    AND id_paralelo=OLD.id_paralelo;
 END
 $$
 DELIMITER ;
@@ -2280,6 +2264,37 @@ CREATE TRIGGER `trg_liberar_cupo_abandono` AFTER UPDATE ON `detalle_inscripcion`
         SET cupo_actual = cupo_actual - 1
         WHERE id_materia = NEW.id_materia
         AND id_paralelo = NEW.id_paralelo;
+    END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_validar_inscripcion_paralelo_cupo` BEFORE INSERT ON `detalle_inscripcion` FOR EACH ROW BEGIN
+    DECLARE v_existe_paralelo INT DEFAULT 0;
+    DECLARE v_cupo_maximo INT DEFAULT 0;
+    DECLARE v_cupo_actual INT DEFAULT 0;
+    
+    -- Verificar que el paralelo existe
+    SELECT COUNT(*) INTO v_existe_paralelo
+    FROM paralelo
+    WHERE id_materia = NEW.id_materia 
+      AND id_paralelo = NEW.id_paralelo;
+    
+    IF v_existe_paralelo = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: El paralelo especificado no existe para esta materia.';
+    END IF;
+    
+    -- Verificar cupo disponible
+    SELECT cupo_maximo, cupo_actual 
+    INTO v_cupo_maximo, v_cupo_actual
+    FROM paralelo
+    WHERE id_materia = NEW.id_materia 
+      AND id_paralelo = NEW.id_paralelo;
+    
+    IF v_cupo_actual >= v_cupo_maximo THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: No hay cupos disponibles en este paralelo.';
     END IF;
 END
 $$
@@ -6597,7 +6612,7 @@ ALTER TABLE `usuario`
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2043;
+  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2045;
 
 --
 -- AUTO_INCREMENT de la tabla `aula`
