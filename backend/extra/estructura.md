@@ -1,151 +1,164 @@
 # Diccionario de Datos - Sistema Académico
 
-A continuación, se detalla la estructura relacional basada exactamente en los nombres y definiciones de la base de datos sistemaacademico, en formato de texto.
+A continuación, se presenta la estructura relacional detallada de la base de datos **sistemaacademico** en formato de tablas estructuradas.
 
-## Entidades de Seguridad y Auditoría
+---
 
-### Tabla: rol
+## 1. Resumen General de Tablas (20)
 
-- **Atributos:** id_rol, nombre
-- **Llave Primaria (PK):** id_rol
-- **Llaves Foráneas (FK):** (Ninguna)
+| Tabla | Módulo | Descripción / Rol en el Sistema |
+| :--- | :--- | :--- |
+| `persona` | Personas | Superclase base para todos los actores (estudiantes, docentes, admin) |
+| `estudiante` | Personas | Subclase de persona con registro universitario y plan de estudios |
+| `docente` | Personas | Subclase de persona con registro docente y grado académico |
+| `administrativo` | Personas | Subclase de persona con número de ítem e institución |
+| `director_carrera` | Personas | Subclase de docente asignada a la dirección de carrera |
+| `director_carrera_asignacion` | Personas | Tabla puente de asignación de director por gestión y carrera |
+| `usuario` | Seguridad | Cuentas de acceso con contraseñas encriptadas en BCrypt |
+| `rol` | Seguridad | Catálogo de roles de sistema (Admin, Director, Docente, Estudiante) |
+| `auditoria` | Seguridad | Trazabilidad de operaciones ejecutadas por `@current_user_id` |
+| `carrera` | Oferta / Estructura | Carreras universitarias de la facultad |
+| `plan_estudio` | Oferta / Estructura | Menciones y planes de estudio por carrera |
+| `materia` | Oferta / Estructura | Catálogo general de asignaturas |
+| `plan_materia` | Oferta / Estructura | Malla curricular (asignación de materia y semestre a un plan) |
+| `prerequisitos` | Oferta / Estructura | Prerrequisitos requeridos entre asignaturas de un plan |
+| `gestion` | Programación | Periodos lectivos (I/2026, II/2026, Invierno/2026, Verano/2026) |
+| `paralelo` | Programación | Secciones/grupos aperturados por materia y gestión |
+| `aula` | Programación | Aulas y laboratorios con su capacidad máxima |
+| `horario` | Programación | Bloques de días y horas asignables a paralelos |
+| `se_cursa` | Programación | Asignación tridimensional de paralelo, aula y horario |
+| `inscripcion` | Inscripciones | Cabecera de matriculación de estudiante por gestión |
+| `detalle_inscripcion` | Inscripciones | Detalle de asignaturas inscritas por el estudiante |
+| `criterio_evaluacion` | Calificaciones | Ponderaciones (exámenes, prácticas) configuradas por el docente |
+| `nota` | Calificaciones | Registro individual de calificaciones asignadas por criterio |
 
-### Tabla: usuario
+---
 
-- **Atributos:** id_usuario, username, password_hash, id_persona, id_rol, estado
-- **Llave Primaria (PK):** id_usuario
-- **Llaves Foráneas (FK):** id_persona (refiere a persona), id_rol (refiere a rol)
+## 2. Definición Detallada por Módulo
 
-### Tabla: auditoria
+### 2.1 Módulo de Seguridad y Auditoría
 
-- **Atributos:** id_auditoria, id_usuario, accion, fecha, hora
-- **Llave Primaria (PK):** id_auditoria
-- **Llaves Foráneas (FK):** id_usuario (refiere a usuario)
+#### Tabla: `rol`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_rol` | `INT(11)` | NO | **PK** | Identificador único del rol |
+| `nombre` | `VARCHAR(50)` | NO | | Nombre del rol (Administrador, Director, Docente, Estudiante) |
 
-## Entidades de Personas (Superclase y Subclases)
+#### Tabla: `usuario`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_usuario` | `INT(11)` | NO | **PK** | Identificador único del usuario |
+| `username` | `VARCHAR(50)` | NO | **UNI** | Nombre de usuario único para inicio de sesión |
+| `password_hash` | `VARCHAR(255)` | NO | | Hash seguro encriptado con BCrypt desde el backend |
+| `id_persona` | `INT(11)` | NO | **FK** | Referencia a la tabla `persona` (ON DELETE CASCADE) |
+| `id_rol` | `INT(11)` | NO | **FK** | Referencia al rol principal de la cuenta |
+| `estado` | `ENUM('Activo', 'Inactivo')` | NO | | Estado de la cuenta de usuario |
 
-### Tabla: persona
+#### Tabla: `auditoria`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_auditoria` | `INT(11)` | NO | **PK** | Identificador único de auditoría |
+| `id_usuario` | `INT(11)` | YES | **FK** | Usuario que ejecutó la acción (`@current_user_id`) |
+| `accion` | `VARCHAR(255)` | NO | | Descripción detallada de la operación |
+| `fecha` | `DATE` | NO | | Fecha de la operación |
+| `hora` | `TIME` | NO | | Hora exacta de ejecución |
 
-- **Atributos:** id_persona, ci, nombres, apellidos, fecha_nac, sexo, email, estado
-- **Llave Primaria (PK):** id_persona
-- **Llaves Foráneas (FK):** (Ninguna)
+---
 
-### Tabla: administrativo
+### 2.2 Módulo de Personas y Actores
 
-- **Atributos:** id_persona, item, id_carrera
-- **Llave Primaria (PK):** id_persona
-- **Llaves Foráneas (FK):** id_persona (refiere a persona), id_carrera (refiere a carrera)
+#### Tabla: `persona`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_persona` | `INT(11)` | NO | **PK** | Identificador base de la persona |
+| `ci` | `VARCHAR(20)` | NO | **UNI** | Cédula de Identidad única |
+| `nombres` | `VARCHAR(80)` | NO | | Nombres de la persona |
+| `apellidos` | `VARCHAR(80)` | NO | | Apellidos de la persona |
+| `fecha_nac` | `DATE` | NO | | Fecha de nacimiento |
+| `sexo` | `ENUM('M', 'F')` | NO | | Género registrado |
+| `email` | `VARCHAR(100)` | NO | **UNI** | Correo electrónico personal o institucional |
+| `estado` | `ENUM('Activo', 'Inactivo')` | NO | | Estado de la persona |
 
-### Tabla: docente
+#### Tabla: `estudiante`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_persona` | `INT(11)` | NO | **PK, FK** | Referencia a `persona` (ON DELETE CASCADE) |
+| `ru` | `VARCHAR(20)` | NO | **UNI** | Registro Universitario único |
+| `id_plan` | `INT(11)` | NO | **FK** | Plan de estudio / mención donde se encuentra inscrito |
+| `anio_ingreso` | `INT(11)` | NO | | Año de admisión a la universidad |
 
-- **Atributos:** id_persona, registro_docente, grado_academico
-- **Llave Primaria (PK):** id_persona
-- **Llaves Foráneas (FK):** id_persona (refiere a persona)
+#### Tabla: `docente`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_persona` | `INT(11)` | NO | **PK, FK** | Referencia a `persona` (ON DELETE CASCADE) |
+| `registro_docente` | `VARCHAR(20)` | NO | **UNI** | Matrícula / Registro Docente único |
+| `grado_academico` | `VARCHAR(50)` | NO | | Grado académico (Lic., M.Sc., Ph.D.) |
 
-### Tabla: director_carrera
+---
 
-- **Atributos:** id_persona
-- **Llave Primaria (PK):** id_persona
-- **Llaves Foráneas (FK):** id_persona (refiere a docente)
+### 2.3 Módulo de Programación Académica y Espacios
 
-### Tabla: director_carrera_asignacion
+#### Tabla: `gestion`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_gestion` | `INT(11)` | NO | **PK** | Identificador único de la gestión |
+| `periodo` | `VARCHAR(20)` | NO | **UNI** | Código de periodo (ej. I/2026, II/2026, Invierno/2026) |
+| `estado` | `ENUM('Activa', 'Cerrada')` | NO | | Estado de la gestión lectiva |
 
-- **Atributos:** id_persona, id_carrera, gestion
-- **Llave Primaria (PK):** id_persona, id_carrera
-- **Llaves Foráneas (FK):** id_persona (refiere a director_carrera), id_carrera (refiere a carrera)
+#### Tabla: `paralelo`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_materia` | `INT(11)` | NO | **PK, FK** | Referencia a la asignatura (`materia`) |
+| `id_paralelo` | `INT(11)` | NO | **PK** | Número identificador del paralelo (1 = A, 2 = B) |
+| `id_gestion` | `INT(11)` | NO | **PK, FK** | Referencia a la gestión académica |
+| `nombre` | `VARCHAR(10)` | NO | | Nombre o letra del paralelo ('A', 'B', 'C') |
+| `cupo_maximo` | `INT(11)` | NO | | Capacidad máxima (limitada por el aula asignada) |
+| `cupo_actual` | `INT(11)` | NO | | Conteo acumulado de estudiantes inscritos |
+| `id_docente` | `INT(11)` | YES | **FK** | Docente asignado (`NULL` si está vacante para toma) |
 
-### Tabla: estudiante
+#### Tabla: `se_cursa`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_materia` | `INT(11)` | NO | **PK, FK** | Asignatura programada |
+| `id_paralelo` | `INT(11)` | NO | **PK, FK** | Paralelo correspondiente |
+| `id_aula` | `INT(11)` | NO | **PK, FK** | Aula o laboratorio físico asignado |
+| `id_horario` | `INT(11)` | NO | **PK, FK** | Bloque de horario asignado |
 
-- **Atributos:** id_persona, ru, id_plan, anio_ingreso
-- **Llave Primaria (PK):** id_persona
-- **Llaves Foráneas (FK):** id_persona (refiere a persona), id_plan (refiere a plan_estudio)
+---
 
-## Entidades Académicas y Planes de Estudio
+### 2.4 Módulo de Inscripciones y Calificaciones
 
-### Tabla: carrera
+#### Tabla: `inscripcion`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_inscripcion` | `INT(11)` | NO | **PK** | Identificador único de la matrícula |
+| `id_estudiante` | `INT(11)` | NO | **FK** | Estudiante que realiza la inscripción |
+| `id_gestion` | `INT(11)` | NO | **FK** | Gestión académica correspondiente |
+| `fecha_registro` | `DATETIME` | NO | | Marca de tiempo del registro |
 
-- **Atributos:** id_carrera, nombre
-- **Llave Primaria (PK):** id_carrera
-- **Llaves Foráneas (FK):** (Ninguna)
+#### Tabla: `detalle_inscripcion`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_detalle` | `INT(11)` | NO | **PK** | Identificador único del detalle de materia |
+| `id_inscripcion` | `INT(11)` | NO | **FK** | Cabecera de inscripción vinculada |
+| `id_materia` | `INT(11)` | NO | **FK** | Asignatura inscrita |
+| `id_paralelo` | `INT(11)` | NO | **FK** | Paralelo seleccionado |
+| `estado` | `ENUM('Inscrito', 'Aprobado', 'Reprobado', 'Abandono')` | NO | | Estado académico del estudiante en la materia |
+| `nota_final` | `FLOAT` | YES | | Nota final ponderada calculada al cierre |
 
-### Tabla: plan_estudio
+#### Tabla: `criterio_evaluacion`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_criterio` | `INT(11)` | NO | **PK** | Identificador del criterio |
+| `id_materia` | `INT(11)` | NO | **FK** | Asignatura vinculada |
+| `id_paralelo` | `INT(11)` | NO | **FK** | Paralelo al que pertenece la evaluación |
+| `nombre` | `VARCHAR(100)` | NO | | Nombre del criterio (ej. Examen Parcial I) |
+| `ponderacion` | `FLOAT` | NO | | Porcentaje sobre 100% de la calificación final |
 
-- **Atributos:** id_plan, nombre, id_carrera
-- **Llave Primaria (PK):** id_plan
-- **Llaves Foráneas (FK):** id_carrera (refiere a carrera)
-
-### Tabla: materia
-
-- **Atributos:** id_materia, sigla, nombre, carga_horaria, estado
-- **Llave Primaria (PK):** id_materia
-- **Llaves Foráneas (FK):** (Ninguna)
-
-### Tabla: plan_materia
-
-- **Atributos:** id_plan, id_materia, semestre
-- **Llave Primaria (PK):** id_plan, id_materia
-- **Llaves Foráneas (FK):** id_plan (refiere a plan_estudio), id_materia (refiere a materia)
-
-### Tabla: prerequisito
-
-- **Atributos:** id_plan, id_materia, id_materia_req
-- **Llave Primaria (PK):** id_plan, id_materia, id_materia_req
-- **Llaves Foráneas (FK):** id_plan, id_materia (refiere a plan_materia), id_plan, id_materia_req (refiere a plan_materia)
-
-## Entidades de Programación y Espacios
-
-### Tabla: gestion
-
-- **Atributos:** id_gestion, periodo, estado
-- **Llave Primaria (PK):** id_gestion
-- **Llaves Foráneas (FK):** (Ninguna)
-
-### Tabla: paralelo
-
-- **Atributos:** id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion
-- **Llave Primaria (PK):** id_materia, id_paralelo
-- **Llaves Foráneas (FK):** id_materia (refiere a materia), id_docente (refiere a docente), id_gestion (refiere a gestion)
-
-### Tabla: aula
-
-- **Atributos:** id_aula, nombre, piso, ubicacion, capacidad
-- **Llave Primaria (PK):** id_aula
-- **Llaves Foráneas (FK):** (Ninguna)
-
-### Tabla: horario
-
-- **Atributos:** id_horario, dia, hora_inicio, hora_fin
-- **Llave Primaria (PK):** id_horario
-- **Llaves Foráneas (FK):** (Ninguna)
-
-### Tabla: se_cursa
-
-- **Atributos:** id_materia, id_paralelo, id_aula, id_horario
-- **Llave Primaria (PK):** id_materia, id_paralelo, id_aula, id_horario
-- **Llaves Foráneas (FK):** id_materia, id_paralelo (refiere a paralelo), id_aula (refiere a aula), id_horario (refiere a horario)
-
-## Entidades de Inscripción y Calificaciones
-
-### Tabla: inscripcion
-
-- **Atributos:** id_inscripcion, id_estudiante, id_gestion, fecha_registro
-- **Llave Primaria (PK):** id_inscripcion
-- **Llaves Foráneas (FK):** id_estudiante (refiere a estudiante), id_gestion (refiere a gestion)
-
-### Tabla: detalle_inscripcion
-
-- **Atributos:** id_detalle, id_inscripcion, id_materia, id_paralelo, estado, nota_final
-- **Llave Primaria (PK):** id_detalle
-- **Llaves Foráneas (FK):** id_inscripcion (refiere a inscripcion), id_materia, id_paralelo (refiere a paralelo)
-
-### Tabla: criterio_evaluacion
-
-- **Atributos:** id_criterio, id_materia, id_paralelo, nombre, ponderacion
-- **Llave Primaria (PK):** id_criterio
-- **Llaves Foráneas (FK):** id_materia, id_paralelo (refiere a paralelo)
-
-### Tabla: nota
-
-- **Atributos:** id_nota, id_detalle, id_criterio, nota_obtenida
-- **Llave Primaria (PK):** id_nota
-- **Llaves Foráneas (FK):** id_detalle (refiere a detalle_inscripcion), id_criterio (refiere a criterio_evaluacion)
+#### Tabla: `nota`
+| Campo | Tipo | Nulo | Clave | Descripción |
+| :--- | :--- | :---: | :---: | :--- |
+| `id_nota` | `INT(11)` | NO | **PK** | Identificador único de la nota parcial |
+| `id_detalle` | `INT(11)` | NO | **FK** | Detalle de inscripción del alumno |
+| `id_criterio` | `INT(11)` | NO | **FK** | Criterio de evaluación correspondiente |
+| `nota_obtenida` | `FLOAT` | NO | | Calificación parcial ingresada por el docente |

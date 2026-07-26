@@ -183,7 +183,7 @@ export function DataProvider({ children }) {
             id_materia: row.id_materia,
             id_paralelo: row.id_paralelo || 1,
             estado: row.estado || "Inscrito",
-            nota_final: row.nota_final || 0,
+            nota_final: row.nota_final !== null && row.nota_final !== undefined ? Number(row.nota_final) : null,
           });
         });
 
@@ -246,40 +246,69 @@ export function DataProvider({ children }) {
     return { id_persona, nombres: "—", apellidos: "", ci: "—", email: "—" };
   };
 
-  const getGestionActiva = () => gestiones.find((g) => g.estado === "Activa") || gestiones[gestiones.length - 1] || { id_gestion: 1, periodo: "I/2026", estado: "Activa" };
+  const getGestionActiva = () => {
+    const activas = (gestiones || []).filter((g) => g.estado === "Activa");
+    if (activas.length > 0) {
+      return activas.sort((a, b) => Number(b.id_gestion) - Number(a.id_gestion))[0];
+    }
+    return null;
+  };
 
-  const getDocenteNombre = (id_persona) => fullName(getPersona(id_persona));
+  const getDocenteNombre = (id_persona) => {
+    if (!id_persona || Number(id_persona) === 0) return "Sin asignar";
+    return fullName(getPersona(id_persona));
+  };
 
-  const getMateria = (id_materia) => materias.find((m) => m.id_materia === id_materia) || { id_materia, sigla: `MAT-${id_materia}`, nombre: `Materia ${id_materia}`, creditos: 5 };
+  const getMateria = (id_materia) =>
+    (materias || []).find((m) => Number(m.id_materia) === Number(id_materia)) || {
+      id_materia,
+      sigla: `MAT-${id_materia}`,
+      nombre: `Materia ${id_materia}`,
+      creditos: 5,
+    };
 
   const getPensumPlan = (id_plan) =>
-    planMateria
-      .filter((pm) => pm.id_plan === id_plan)
+    (planMateria || [])
+      .filter((pm) => Number(pm.id_plan) === Number(id_plan))
       .map((pm) => ({ ...pm, materia: getMateria(pm.id_materia) }))
       .filter((pm) => pm.materia)
       .sort((a, b) => a.semestre - b.semestre || a.materia.sigla.localeCompare(b.materia.sigla));
 
   const getPrerrequisitos = (id_plan, id_materia) =>
-    prerequisitos
-      .filter((p) => p.id_plan === id_plan && p.id_materia === id_materia)
-      .map((p) => p.id_materia_req);
+    [...new Set(
+      (prerequisitos || [])
+        .filter((p) => Number(p.id_materia) === Number(id_materia))
+        .map((p) => Number(p.id_materia_req))
+    )];
 
   const getHistorialEstudiante = (id_estudiante) => {
-    const insEst = inscripciones.filter((i) => i.id_estudiante === id_estudiante);
+    const insEst = (inscripciones || []).filter((i) => Number(i.id_estudiante) === Number(id_estudiante));
     const idsIns = insEst.map((i) => i.id_inscripcion);
-    return detalle
+    const raw = (detalle || [])
       .filter((d) => idsIns.includes(d.id_inscripcion))
       .map((d) => {
         const ins = insEst.find((i) => i.id_inscripcion === d.id_inscripcion);
-        const gestion = gestiones.find((g) => g.id_gestion === (ins ? ins.id_gestion : 1)) || { id_gestion: 1, periodo: "I/2026" };
+        const gestion = (gestiones || []).find((g) => Number(g.id_gestion) === Number(ins ? ins.id_gestion : 1)) || { id_gestion: 1, periodo: "I/2026" };
         return { ...d, gestion, materia: getMateria(d.id_materia) };
       })
-      .filter((d) => d.gestion && d.materia)
-      .sort((a, b) => a.gestion.periodo.localeCompare(b.gestion.periodo));
+      .filter((d) => d.gestion && d.materia);
+
+    const mapaPorMateria = new Map();
+    raw.forEach((item) => {
+      const key = `${item.gestion.id_gestion}-${item.id_materia}`;
+      const existente = mapaPorMateria.get(key);
+      if (!existente) {
+        mapaPorMateria.set(key, item);
+      } else if (existente.estado === "Abandono" && item.estado !== "Abandono") {
+        mapaPorMateria.set(key, item);
+      }
+    });
+
+    return Array.from(mapaPorMateria.values()).sort((a, b) => a.gestion.periodo.localeCompare(b.gestion.periodo));
   };
 
   const getEstadoMateriaParaEstudiante = (id_estudiante, id_materia) => {
-    const historial = getHistorialEstudiante(id_estudiante).filter((h) => h.id_materia === id_materia);
+    const historial = getHistorialEstudiante(id_estudiante).filter((h) => Number(h.id_materia) === Number(id_materia));
     if (historial.some((h) => h.estado === "Aprobado")) return "aprobada";
     if (historial.some((h) => h.estado === "Inscrito")) return "cursando";
     if (historial.length && historial.every((h) => h.estado === "Reprobado")) return "reprobada";
@@ -289,27 +318,75 @@ export function DataProvider({ children }) {
   const getMateriasAprobadas = (id_estudiante) =>
     getHistorialEstudiante(id_estudiante)
       .filter((h) => h.estado === "Aprobado")
-      .map((h) => h.id_materia);
+      .map((h) => Number(h.id_materia));
 
-  const getParalelosOferta = (id_materia, id_gestion) =>
-    paralelos
-      .filter((p) => p.id_materia === id_materia && p.id_gestion === id_gestion)
-      .map((p) => ({
+  const getParalelosOferta = (id_materia, id_gestion) => {
+    const targetGestion = id_gestion || getGestionActiva()?.id_gestion;
+    const directos = (paralelos || []).filter(
+      (p) => Number(p.id_materia) === Number(id_materia) && Number(p.id_gestion) === Number(targetGestion)
+    );
+    const lista = directos.length > 0 ? directos : (paralelos || []).filter((p) => Number(p.id_materia) === Number(id_materia));
+
+    return lista.map((p) => {
+      // Contar inscripciones reales activas en memoria para evitar desajustes de la columna cupo_actual
+      const inscritosReales = (detalle || []).filter((d) => {
+        if (Number(d.id_materia) !== Number(id_materia) || Number(d.id_paralelo) !== Number(p.id_paralelo)) return false;
+        if (d.estado === "Abandono" || d.estado === "Retirado") return false;
+        const ins = (inscripciones || []).find((i) => Number(i.id_inscripcion) === Number(d.id_inscripcion));
+        return !targetGestion || (ins && Number(ins.id_gestion) === Number(targetGestion));
+      });
+
+      const mapaEstudiantes = new Map();
+      inscritosReales.forEach((d) => {
+        const ins = (inscripciones || []).find((i) => Number(i.id_inscripcion) === Number(d.id_inscripcion));
+        if (ins?.id_estudiante) mapaEstudiantes.set(Number(ins.id_estudiante), true);
+      });
+
+      const numInscritos = Math.max(Number(p.cupo_actual || 0), mapaEstudiantes.size);
+      const maximo = Number(p.cupo_maximo || 40);
+      const disponibles = Math.max(0, maximo - numInscritos);
+
+      return {
         ...p,
-        cupo_disponible: (p.cupo_maximo || 40) - (p.cupo_actual || 0),
+        cupo_actual: numInscritos,
+        cupo_maximo: maximo,
+        cupo_disponible: disponibles,
         docenteNombre: getDocenteNombre(p.id_docente),
-        horario: seCursa.find((s) => s.id_materia === id_materia && s.id_paralelo === p.id_paralelo),
-      }));
+        horario: (seCursa || []).find((s) => Number(s.id_materia) === Number(id_materia) && Number(s.id_paralelo) === Number(p.id_paralelo)),
+      };
+    });
+  };
 
   const puedeInscribirse = (id_estudiante, id_plan, id_materia) => {
+    const pm = (planMateria || []).find(
+      (p) => Number(p.id_materia) === Number(id_materia) && (Number(p.id_plan) === Number(id_plan) || !p.id_plan)
+    );
+    const semestreMateria = pm ? Number(pm.semestre) : 1;
+
+    // 1. Verificar Prerrequisitos directos en la tabla prerequisito
     const requeridas = getPrerrequisitos(id_plan, id_materia);
-    if (requeridas.length === 0) return { ok: true };
     const aprobadas = getMateriasAprobadas(id_estudiante);
-    const faltantes = requeridas.filter((r) => !aprobadas.includes(r));
+    const faltantes = requeridas.filter((r) => !aprobadas.includes(Number(r)));
     if (faltantes.length > 0) {
-      const nombres = faltantes.map((id) => getMateria(id)?.sigla).join(", ");
-      return { ok: false, motivo: `Debe aprobar primero: ${nombres}` };
+      const nombres = faltantes.map((id) => getMateria(id)?.sigla || `MAT-${id}`).join(", ");
+      return { ok: false, motivo: `Debe aprobar primero el prerrequisito directo: ${nombres}` };
     }
+
+    // 2. Regla de Nivel/Semestre: Un estudiante no puede tomar materias del semestre N si le faltan materias de semestres (N-2) o inferiores
+    if (semestreMateria > 2) {
+      const materiasObligatoriasPrevias = (planMateria || [])
+        .filter((p) => (Number(p.id_plan) === Number(id_plan) || Number(p.id_plan) === 1) && Number(p.semestre) <= (semestreMateria - 2))
+        .map((p) => Number(p.id_materia));
+
+      const sinAprobarAnteriores = materiasObligatoriasPrevias.filter((id) => !aprobadas.includes(Number(id)));
+      if (sinAprobarAnteriores.length > 0) {
+        return {
+          ok: false,
+          motivo: `Bloqueado por avance de nivel: Para cursar materias de ${semestreMateria}º semestre debe aprobar primero las asignaturas de ${semestreMateria - 2}º semestre e inferiores.`
+        };
+      }
+    }
+
     return { ok: true };
   };
 
@@ -346,28 +423,55 @@ export function DataProvider({ children }) {
   };
 
   const crearCriterio = async (id_materia, id_paralelo, nombre, ponderacion) => {
-    await gradesService.crearCriterio({ id_materia, id_paralelo, nombre, ponderacion });
-    await reloadFromBackend();
+    const res = await gradesService.crearCriterio({ id_materia, id_paralelo, nombre, ponderacion });
+    const newId = res.data?.result?.insertId || res.data?.result?.id_criterio || Date.now();
+    setCriterios((prev) => [...prev, { id_criterio: newId, id_materia, id_paralelo, nombre, ponderacion }]);
+  };
+
+  const actualizarCriterio = async (id_criterio, nombre, ponderacion) => {
+    await gradesService.actualizarCriterio(id_criterio, { nombre, ponderacion });
+    setCriterios((prev) =>
+      prev.map((c) => (Number(c.id_criterio) === Number(id_criterio) ? { ...c, nombre, ponderacion } : c))
+    );
   };
 
   const eliminarCriterio = async (id_criterio) => {
     await gradesService.eliminarCriterio(id_criterio);
-    await reloadFromBackend();
+    setCriterios((prev) => prev.filter((c) => Number(c.id_criterio) !== Number(id_criterio)));
   };
 
   const guardarNota = async (id_detalle, id_criterio, puntaje_obtenido) => {
-    await gradesService.guardarNota({ id_detalle, id_criterio, nota_obtenida: puntaje_obtenido, puntaje_obtenido });
-    await reloadFromBackend();
+    const valNum = Number(puntaje_obtenido);
+    // Actualización optimista local de notas en memoria sin provocar spinner ni recarga
+    setNotas((prev) => {
+      const idx = prev.findIndex((n) => Number(n.id_detalle) === Number(id_detalle) && Number(n.id_criterio) === Number(id_criterio));
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], nota_obtenida: valNum, puntaje_obtenido: valNum };
+        return copy;
+      }
+      return [...prev, { id_nota: Date.now(), id_detalle: Number(id_detalle), id_criterio: Number(id_criterio), nota_obtenida: valNum, puntaje_obtenido: valNum }];
+    });
+
+    try {
+      await gradesService.guardarNota({ id_detalle: Number(id_detalle), id_criterio: Number(id_criterio), nota_obtenida: valNum, puntaje_obtenido: valNum });
+    } catch (err) {
+      console.error("Error al guardar nota en backend:", err.message);
+    }
   };
 
   const calcularNotaFinal = (id_materia, id_paralelo, id_detalle) => {
-    const crit = criterios.filter((c) => c.id_materia === id_materia && c.id_paralelo === id_paralelo);
-    const totalPonderado = crit.reduce((acc, c) => {
-      const nota = notas.find((n) => n.id_detalle === id_detalle && n.id_criterio === c.id_criterio);
-      const puntaje = nota ? (nota.nota_obtenida !== undefined ? nota.nota_obtenida : nota.puntaje_obtenido) : 0;
-      return acc + (puntaje * c.ponderacion) / 100;
+    const crit = (criterios || []).filter(
+      (c) => Number(c.id_materia) === Number(id_materia) && Number(c.id_paralelo) === Number(id_paralelo)
+    );
+    const totalSuma = crit.reduce((acc, c) => {
+      const nota = (notas || []).find(
+        (n) => Number(n.id_detalle) === Number(id_detalle) && Number(n.id_criterio) === Number(c.id_criterio)
+      );
+      const valor = nota ? Number(nota.nota_obtenida ?? nota.puntaje_obtenido ?? 0) : 0;
+      return acc + (isNaN(valor) ? 0 : valor);
     }, 0);
-    return Math.round(totalPonderado * 100) / 100;
+    return Math.round(totalSuma * 100) / 100;
   };
 
   // Previsualización del cierre — llama a sp_preview_cierre_gestion vía API
@@ -392,14 +496,16 @@ export function DataProvider({ children }) {
 
   // Asignar docente a un paralelo
   const asignarDocenteParalelo = async (id_materia, id_paralelo, id_docente) => {
-    const res = await paraleloService.asignarDocente(id_materia, id_paralelo, id_docente);
+    const activeG = getGestionActiva();
+    const res = await paraleloService.asignarDocente(id_materia, id_paralelo, id_docente, activeG?.id_gestion);
     await reloadFromBackend();
     return res.data;
   };
 
   // Desasignar docente de un paralelo
   const desasignarDocenteParalelo = async (id_materia, id_paralelo) => {
-    const res = await paraleloService.desasignarDocente(id_materia, id_paralelo);
+    const activeG = getGestionActiva();
+    const res = await paraleloService.desasignarDocente(id_materia, id_paralelo, activeG?.id_gestion);
     await reloadFromBackend();
     return res.data;
   };
@@ -448,6 +554,7 @@ export function DataProvider({ children }) {
       retirarInscripcion,
       actualizarEstadoDetalle,
       crearCriterio,
+      actualizarCriterio,
       eliminarCriterio,
       guardarNota,
       calcularNotaFinal,

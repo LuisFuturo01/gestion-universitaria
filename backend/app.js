@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
 import { pool } from './config/db.js';
+// Servidor re-sincronizado para autorreparación de paralelos en gestión activa
 
 // Rutas Entidades Verdes (Usuario, Actor, Rol, Inscripción, Dirige, Auth)
 import usuarioRutas from "./routes/usuarioRoutes.js";

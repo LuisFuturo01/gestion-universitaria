@@ -9,40 +9,58 @@ export default function DashboardPage() {
   const gestionActiva = data.getGestionActiva();
 
   // 1. VISTA ADMINISTRADOR (Soporte y Control Técnico)
-  if (rol === "ADMIN") {
-    const usuariosActivos = data.usuarios.filter((u) => u.estado === "A" || u.activo !== false).length;
-    const totalParalelos = data.paralelos.length;
-    const registrosAuditoria = data.auditoria || [];
+  if (rol === "ADMIN" || rol === "ADMINISTRADOR") {
+    const usuariosActivos = (data.usuarios || []).filter((u) => u.estado === "A" || u.activo !== false).length;
+    const totalEstudiantes = (data.estudiantes || []).length;
+    const totalDocentes = (data.docentes || []).length;
+    const totalParalelosActivos = (data.paralelos || []).filter(
+      (p) => Number(p.id_gestion) === Number(gestionActiva?.id_gestion)
+    ).length;
+    const totalParalelos = totalParalelosActivos > 0 ? totalParalelosActivos : (data.paralelos || []).length;
 
     return (
       <div>
-        <SectionHeader title={`Panel de Administración General`} subtitle="Monitoreo de infraestructura, cuentas y estado de conexión" />
+        <SectionHeader title="Panel de Administración General" subtitle="Monitoreo de usuarios, oferta académica y control de gestión" />
+        
         <div className="stats-grid">
-          <StatCard icon="🟢" label="Salud del sistema" value="100% Operativo" tone="green" />
-          <StatCard icon="🔑" label="Usuarios activos" value={usuariosActivos} tone="blue" />
-          <StatCard icon="📚" label="Paralelos registrados" value={totalParalelos} tone="purple" />
-          <StatCard icon="📋" label="Registros de auditoría" value={registrosAuditoria.length} tone="yellow" />
+          <StatCard icon="🔑" label="Usuarios del sistema" value={usuariosActivos} tone="blue" />
+          <StatCard icon="👥" label="Estudiantes matriculados" value={totalEstudiantes} tone="purple" />
+          <StatCard icon="👨‍🏫" label="Docentes registrados" value={totalDocentes} tone="yellow" />
+          <StatCard icon="📚" label="Paralelos aperturados" value={totalParalelos} tone="green" />
         </div>
 
         <div className="page-card" style={{ marginTop: 20 }}>
-          <SectionHeader title="Auditoría del sistema (tabla auditoria — MySQL)" />
-          {registrosAuditoria.length === 0 ? (
-            <p className="empty-state">No hay registros de auditoría en la base de datos.</p>
-          ) : (
-            <table className="table">
-              <thead><tr><th>Usuario</th><th>Acción</th><th>Fecha</th><th>Hora</th></tr></thead>
-              <tbody>
-                {registrosAuditoria.slice(0, 20).map((a, i) => (
-                  <tr key={a.id_auditoria || i}>
-                    <td><strong>{a.username || `ID: ${a.id_usuario}`}</strong></td>
-                    <td>{a.accion}</td>
-                    <td>{a.fecha ? new Date(a.fecha).toLocaleDateString() : "—"}</td>
-                    <td>{a.hora || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <SectionHeader title="Estado del Periodo Académico" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+            <div style={{ padding: 18, background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                Gestión Activa en Curso
+              </span>
+              <h3 style={{ margin: "6px 0 4px", color: "#0f172a" }}>
+                {gestionActiva ? gestionActiva.periodo : "Sin gestión activa"}
+              </h3>
+              <Badge style={{ background: gestionActiva?.estado === "Activa" ? "#10b981" : "#ef4444", color: "#fff" }}>
+                {gestionActiva?.estado || "Inactiva"}
+              </Badge>
+            </div>
+
+            <div style={{ padding: 18, background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                Oferta de Paralelos
+              </span>
+              <h3 style={{ margin: "6px 0 4px", color: "#0f172a" }}>{totalParalelos} paralelos</h3>
+              <span style={{ fontSize: "0.85rem", color: "#64748b" }}>Grupos aperturados en la gestión actual</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="page-card" style={{ marginTop: 20 }}>
+          <SectionHeader title="Accesos Rápidos de Administración" />
+          <ul className="quick-links">
+            <li><a href="/actores">Gestión de Usuarios (Estudiantes, Docentes, Administrativos)</a></li>
+            <li><a href="/oferta">Oferta Académica y Asignación de Paralelos</a></li>
+            <li><a href="/cierre-gestion">Apertura y Cierre de Gestión Académica</a></li>
+          </ul>
         </div>
       </div>
     );
@@ -52,14 +70,12 @@ export default function DashboardPage() {
   if (rol === "DIRECTOR") {
     const carrera = data.carreras[0] || { nombre: "Ingeniería de Sistemas", id_carrera: 1 };
     const estudiantesCarrera = data.estudiantes.length;
-    const avanceDocentes = "85%";
 
     return (
       <div>
         <SectionHeader title={`Dirección de Carrera — ${carrera.nombre}`} subtitle={`Gestión Activa: ${gestionActiva?.periodo || "I/2026"}`} />
         <div className="stats-grid">
           <StatCard icon="👥" label="Estudiantes inscritos en la carrera" value={estudiantesCarrera} tone="blue" />
-          <StatCard icon="📊" label="Avance de notas docentes" value={avanceDocentes} tone="green" />
           <StatCard icon="📅" label="Estado de gestión" value={gestionActiva?.estado || "Activa"} tone="purple" />
         </div>
 
@@ -68,7 +84,7 @@ export default function DashboardPage() {
           <ul className="quick-links">
             <li><a href="/reportes">Reportes y Métricas Académicas de la Carrera</a></li>
             <li><a href="/cierre-gestion">Apertura y Cierre de Gestión Académica</a></li>
-            <li><a href="/historial">Auditoría de Historial Académico de Estudiantes</a></li>
+            <li><a href="/oferta">Oferta Académica General</a></li>
           </ul>
         </div>
       </div>
@@ -78,7 +94,7 @@ export default function DashboardPage() {
   // 3. VISTA DOCENTE (Materias Asignadas y Alertas)
   if (rol === "DOCENTE") {
     const misParalelos = data.paralelos.filter(
-      (p) => p.id_docente === session?.id_persona && p.id_gestion === gestionActiva?.id_gestion
+      (p) => Number(p.id_docente) === Number(session?.id_persona) && Number(p.id_gestion) === Number(gestionActiva?.id_gestion)
     );
 
     return (
@@ -86,17 +102,17 @@ export default function DashboardPage() {
         <SectionHeader title={`Panel Docente — ${session?.nombreCompleto}`} subtitle={`Gestión Activa: ${gestionActiva?.periodo || "I/2026"}`} />
         <div className="stats-grid">
           <StatCard icon="📚" label="Materias / Paralelos a mi cargo" value={misParalelos.length} tone="blue" />
-          <StatCard icon="🔔" label="Notas pendientes de publicar" value={misParalelos.length > 0 ? "1 pendiente" : "0"} tone="yellow" />
+          <StatCard icon="🔔" label="Notas pendientes de publicar" value={misParalelos.length > 0 ? "Borrador activo" : "0"} tone="yellow" />
         </div>
 
         <div className="page-card" style={{ marginTop: 20 }}>
           <SectionHeader title="Mis asignaturas dictadas esta gestión" />
           {misParalelos.length === 0 ? (
-            <p className="empty-state">No tiene paralelos asignados en la gestión activa.</p>
+            <p className="empty-state">No tiene paralelos asignados en la gestión activa. Acceda a 'Oferta Académica' para tomar materias.</p>
           ) : (
             <table className="table">
               <thead>
-                <tr><th>Materia</th><th>Paralelo</th><th>Estudiantes</th><th>Estado Planilla</th><th>Acción</th></tr>
+                <tr><th>Materia</th><th>Paralelo</th><th>Estudiantes</th><th>Acción</th></tr>
               </thead>
               <tbody>
                 {misParalelos.map((p) => {
@@ -106,7 +122,6 @@ export default function DashboardPage() {
                       <td><strong>{materia?.sigla}</strong> — {materia?.nombre}</td>
                       <td>Paralelo {p.nombre}</td>
                       <td>{p.cupo_actual} inscritos</td>
-                      <td><Badge>Borrador en curso</Badge></td>
                       <td><a href="/notas" className="link-button">Ir a Planilla ➔</a></td>
                     </tr>
                   );
@@ -125,7 +140,7 @@ export default function DashboardPage() {
   const activas = historial.filter((h) => h.estado === "Inscrito");
   const aprobadas = historial.filter((h) => h.estado === "Aprobado");
   const promedioGeneral = aprobadas.length > 0
-    ? Math.round((aprobadas.reduce((acc, h) => acc + h.nota_final, 0) / aprobadas.length) * 100) / 100
+    ? Math.round((aprobadas.reduce((acc, h) => acc + (h.nota_final || 0), 0) / aprobadas.length) * 100) / 100
     : 0;
 
   return (

@@ -1,4 +1,15 @@
 import * as paraleloModel from '../models/paraleloModel.js';
+import { repararParalelosGestionActiva } from '../models/gestionModel.js';
+
+export const repararParalelos = async (req, res) => {
+    try {
+        const resultado = await repararParalelosGestionActiva();
+        const paralelos = await paraleloModel.obtenerTodos();
+        res.status(200).json({ message: 'Paralelos aperturados exitosamente', ...resultado, paralelos });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al reparar paralelos', detalle: error.message });
+    }
+};
 
 export const crearParalelo = async (req, res) => {
     try {
@@ -44,16 +55,15 @@ export const eliminarParalelo = async (req, res) => {
 export const asignarDocente = async (req, res) => {
     try {
         const { id_materia, id_paralelo } = req.params;
-        const { id_docente } = req.body;
+        const { id_docente, id_gestion } = req.body;
 
         if (!id_docente) {
             return res.status(400).json({ error: 'Se requiere id_docente' });
         }
 
-        await paraleloModel.asignarDocente(id_materia, id_paralelo, id_docente);
+        await paraleloModel.asignarDocente(id_materia, id_paralelo, id_docente, id_gestion);
         res.status(200).json({ message: 'Docente asignado al paralelo exitosamente' });
     } catch (error) {
-        // El trigger trg_validar_max_paralelos_docente lanza SQLSTATE 45000
         if (error.message && error.message.includes('ya dirige 3 paralelos')) {
             return res.status(409).json({ error: error.message });
         }
@@ -61,11 +71,11 @@ export const asignarDocente = async (req, res) => {
     }
 };
 
-// Liberar un paralelo (desasignar docente)
 export const desasignarDocente = async (req, res) => {
     try {
         const { id_materia, id_paralelo } = req.params;
-        await paraleloModel.desasignarDocente(id_materia, id_paralelo);
+        const { id_gestion } = req.body || {};
+        await paraleloModel.desasignarDocente(id_materia, id_paralelo, id_gestion);
         res.status(200).json({ message: 'Docente desasignado del paralelo exitosamente' });
     } catch (error) {
         res.status(500).json({ error: 'Error al desasignar docente del paralelo', detalle: error.message });

@@ -36,9 +36,19 @@ function VistaEstudiante({ session, data, gestionActiva }) {
   const pensum = data.getPensumPlan(plan?.id_plan || 1);
   const [idMateria, setIdMateria] = useState(null);
 
-  const misInscripcionesActivas = data
-    .getHistorialEstudiante(estudiante.id_persona)
-    .filter((h) => h.gestion?.id_gestion === gestionActiva?.id_gestion && h.estado === "Inscrito");
+  const misInscripcionesActivas = useMemo(() => {
+    const raw = data
+      .getHistorialEstudiante(estudiante.id_persona)
+      .filter((h) => Number(h.gestion?.id_gestion) === Number(gestionActiva?.id_gestion) && h.estado === "Inscrito");
+
+    const mapa = new Map();
+    raw.forEach((item) => {
+      if (!mapa.has(Number(item.id_materia))) {
+        mapa.set(Number(item.id_materia), item);
+      }
+    });
+    return Array.from(mapa.values());
+  }, [data, estudiante.id_persona, gestionActiva]);
 
   const materiasDisponibles = pensum.filter((m) => {
     const estado = data.getEstadoMateriaParaEstudiante(estudiante.id_persona, m.id_materia);
@@ -95,7 +105,7 @@ function VistaEstudiante({ session, data, gestionActiva }) {
       showSuccess("¡Inscripción realizada con éxito!");
       setIdMateria(null);
     } catch (e) {
-      showError(`Error al realizar la inscripción: ${e.message}`);
+      showError(e.message);
     }
   };
 
@@ -191,7 +201,7 @@ function VistaEstudiante({ session, data, gestionActiva }) {
                         </td>
                         <td>
                           <span style={{ color: sinCupo ? "#e64545" : "#1f9d55", fontWeight: 600 }}>
-                            {p.cupo_disponible} / {p.cupo_maximo}
+                            {p.cupo_actual || 0} / {p.cupo_maximo} <small style={{ color: "#64748b" }}>({p.cupo_disponible} libres)</small>
                           </span>
                         </td>
                         <td>
@@ -271,7 +281,15 @@ function VistaAdministrador({ data, gestionActiva }) {
                   <tr key={h.id_detalle}>
                     <td>{h.materia?.sigla} — {h.materia?.nombre}</td>
                     <td><Badge>{h.estado}</Badge></td>
-                    <td><strong>{h.nota_final}</strong></td>
+                    <td>
+                      <strong>
+                        {h.estado === "Inscrito"
+                          ? (data.calcularNotaFinal(h.id_materia, h.id_paralelo, h.id_detalle) > 0
+                              ? `${data.calcularNotaFinal(h.id_materia, h.id_paralelo, h.id_detalle)} pts (proyectados)`
+                              : "— (En curso)")
+                          : `${h.nota_final ?? 0} pts`}
+                      </strong>
+                    </td>
                     <td>
                       <select
                         value={h.estado}

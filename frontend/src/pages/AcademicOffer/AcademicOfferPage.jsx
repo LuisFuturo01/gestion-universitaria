@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { useToast } from "../../context/ToastContext";
-import { SectionHeader, EmptyState } from "../../components/Common/Common";
+import { SectionHeader, Badge, EmptyState } from "../../components/Common/Common";
+import { SkeletonCard } from "../../components/Common/SkeletonLoader";
+import CurriculumFlowModal from "../../components/CurriculumFlow/CurriculumFlowModal";
 
 export const getTipoMateria = (sigla = "", nombre = "") => {
   if (!sigla || !nombre) return "Corriente";
@@ -48,6 +50,7 @@ export default function AcademicOfferPage() {
   const [idPlan, setIdPlan] = useState(planesCarrera[0]?.id_plan || 1);
   const [seleccionada, setSeleccionada] = useState(null);
   const [mostrarModalTomar, setMostrarModalTomar] = useState(false);
+  const [mostrarFlujo, setMostrarFlujo] = useState(false);
   const [tabDocente, setTabDocente] = useState("malla"); // "malla" | "mis_materias"
   const [idDocenteFiltroAdmin, setIdDocenteFiltroAdmin] = useState(session?.id_persona || 1);
 
@@ -225,6 +228,29 @@ export default function AcademicOfferPage() {
               {gestionActiva?.periodo || "I/2026"}
             </span>
           </p>
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className="button primary sm"
+              style={{
+                background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                color: "#ffffff",
+                border: "none",
+                fontWeight: 800,
+                fontSize: "0.85rem",
+                padding: "8px 16px",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.4)",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6
+              }}
+              onClick={() => setMostrarFlujo(true)}
+            >
+              🗺️ Ver Flujo de Malla
+            </button>
+          </div>
         </div>
 
         {(esDocente || esAdminDirector) && (
@@ -379,18 +405,19 @@ export default function AcademicOfferPage() {
                   <h3 className="semester-title">Semestre {semestre}</h3>
                   <div className="materia-grid">
                     {materias.map((m) => {
+                      const idMateriaTarget = m.id_materia || m.materia?.id_materia;
                       const estadoEstudiante = esEstudiante
-                        ? data.getEstadoMateriaParaEstudiante(session.id_persona, m.id_materia)
+                        ? data.getEstadoMateriaParaEstudiante(session.id_persona, idMateriaTarget)
                         : null;
                       const claseEstado = estadoEstudiante ? ESTADO_INFO[estadoEstudiante].clase : "";
                       const tipoStyle = TIPO_MATERIA_STYLES[m.tipo_materia] || TIPO_MATERIA_STYLES["Corriente"];
-                      const oferta = data.getParalelosOferta(m.id_materia, gestionActiva?.id_gestion || 1);
+                      const oferta = data.getParalelosOferta(idMateriaTarget, gestionActiva?.id_gestion);
 
                       return (
                         <button
-                          key={m.id_materia}
+                          key={idMateriaTarget || m.id_materia}
                           className={`materia-card ${tipoStyle.clase} ${claseEstado}`}
-                          onClick={() => setSeleccionada(m)}
+                          onClick={() => setSeleccionada({ ...m, id_materia: idMateriaTarget })}
                           type="button"
                         >
                           <span className={`tipo-tag ${tipoStyle.clase}`}>
@@ -463,7 +490,10 @@ export default function AcademicOfferPage() {
                             ? `${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.dia || ''} ${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_inicio || ''}`
                             : "Aula / Horario a definir"}
                         </td>
-                        <td>{p.cupo_disponible} / {p.cupo_maximo}</td>
+                        <td>
+                          <strong>{p.cupo_actual || 0}</strong> / {p.cupo_maximo}{" "}
+                          <small style={{ color: "#64748b" }}>({p.cupo_disponible} libres)</small>
+                        </td>
                         {(esDocente || esAdminDirector) && (
                           <td>
                             {sinDocente ? (
@@ -554,6 +584,15 @@ export default function AcademicOfferPage() {
             )}
           </div>
         </div>
+      )}
+
+      {mostrarFlujo && (
+        <CurriculumFlowModal
+          plan={planActual}
+          data={data}
+          estudiante={session?.estudiante || { id_persona: session?.id_persona }}
+          onClose={() => setMostrarFlujo(false)}
+        />
       )}
     </div>
   );

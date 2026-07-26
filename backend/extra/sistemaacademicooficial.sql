@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 26-07-2026 a las 19:07:10
+-- Tiempo de generación: 26-07-2026 a las 22:53:26
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -74,6 +74,173 @@ END$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_old_aula` INT, IN `p_old_horario` INT, IN `p_new_aula` INT, IN `p_new_horario` INT)   BEGIN
     UPDATE se_cursa SET id_aula = p_new_aula, id_horario = p_new_horario
     WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo AND id_aula = p_old_aula AND id_horario = p_old_horario;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_aperturar_paralelo_completo` (IN `p_id_materia` INT, IN `p_nombre_paralelo` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
+    DECLARE v_id_paralelo INT;
+    
+    -- Manejador de errores para revertir cambios si algo falla (ej. choques de horario)
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    START TRANSACTION;
+    
+    -- 1. Autogenerar el id_paralelo correlativo para la materia específica
+    SELECT COALESCE(MAX(id_paralelo), 0) + 1 INTO v_id_paralelo
+    FROM paralelo
+    WHERE id_materia = p_id_materia;
+    
+    -- 2. Insertar el paralelo con el cupo en 0
+    INSERT INTO paralelo (id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion)
+    VALUES (p_id_materia, v_id_paralelo, p_nombre_paralelo, p_cupo_maximo, 0, p_id_docente, p_id_gestion);
+    
+    -- 3. Asignar la programación académica (aula y horario)
+    INSERT INTO se_cursa (id_materia, id_paralelo, id_aula, id_horario)
+    VALUES (p_id_materia, v_id_paralelo, p_id_aula, p_id_horario);
+    
+    COMMIT;
+    
+    -- Devolver el ID generado al backend
+    SELECT v_id_paralelo AS id_paralelo_generado;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_aulas_horarios_con_reintentos` (IN `p_id_gestion` INT, IN `p_max_intentos` INT)   BEGIN
+    DECLARE v_id_materia INT;
+    DECLARE v_id_paralelo INT;
+    DECLARE v_id_aula INT;
+    DECLARE v_id_horario INT;
+    DECLARE v_intentos INT;
+    DECLARE v_finished INT DEFAULT 0;
+    DECLARE v_exito INT DEFAULT 0;
+    DECLARE v_total_paralelos INT DEFAULT 0;
+    DECLARE v_asignados INT DEFAULT 0;
+    DECLARE v_error_msg VARCHAR(255);
+    
+    -- Cursor para recorrer paralelos
+    DECLARE cur_paralelos CURSOR FOR
+        SELECT id_materia, id_paralelo
+        FROM paralelo
+        WHERE id_gestion = p_id_gestion
+        ORDER BY id_materia, id_paralelo;
+    
+    -- Manejador para cuando el cursor llega al final
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_finished = 1;
+    
+    -- Manejador de errores generales
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Contar total de paralelos
+    SELECT COUNT(*) INTO v_total_paralelos
+    FROM paralelo
+    WHERE id_gestion = p_id_gestion;
+    
+    IF v_total_paralelos = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'No hay paralelos en la gestion especificada.';
+    END IF;
+    
+    -- Abrir cursor
+    OPEN cur_paralelos;
+    
+    loop_paralelos: LOOP
+        FETCH cur_paralelos INTO v_id_materia, v_id_paralelo;
+        
+        IF v_finished = 1 THEN
+            LEAVE loop_paralelos;
+        END IF;
+        
+        -- Inicializar variables
+        SET v_exito = 0;
+        SET v_intentos = 0;
+        
+        -- BUCLE DE REINTENTOS
+        WHILE v_exito = 0 AND v_intentos < p_max_intentos DO
+            SET v_intentos = v_intentos + 1;
+            
+            -- Elegir aula y horario aleatorio
+            SELECT id_aula INTO v_id_aula 
+            FROM aula 
+            ORDER BY RAND() 
+            LIMIT 1;
+            
+            SELECT id_horario INTO v_id_horario 
+            FROM horario 
+            ORDER BY RAND() 
+            LIMIT 1;
+            
+            -- Verificar si la combinación está disponible (sin conflicto de aula)
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM se_cursa sc
+                JOIN paralelo p ON sc.id_materia = p.id_materia 
+                    AND sc.id_paralelo = p.id_paralelo
+                WHERE sc.id_aula = v_id_aula 
+                  AND sc.id_horario = v_id_horario
+                  AND p.id_gestion = p_id_gestion
+            ) THEN
+                -- También verificar que el docente no tenga conflicto
+                IF NOT EXISTS (
+                    SELECT 1 
+                    FROM se_cursa sc
+                    JOIN paralelo p ON sc.id_materia = p.id_materia 
+                        AND sc.id_paralelo = p.id_paralelo
+                    JOIN paralelo p_actual ON v_id_materia = p_actual.id_materia 
+                        AND v_id_paralelo = p_actual.id_paralelo
+                    WHERE p.id_docente = p_actual.id_docente
+                      AND sc.id_horario = v_id_horario
+                      AND p.id_gestion = p_id_gestion
+                ) THEN
+                    SET v_exito = 1;
+                END IF;
+            END IF;
+        END WHILE;
+        
+        -- Si no encontró combinación válida después de los intentos
+        IF v_exito = 0 THEN
+            -- Construir mensaje de error sin CONCAT en SIGNAL
+            SET v_error_msg = CONCAT(
+                'No se pudo asignar aula/horario despues de ',
+                CAST(p_max_intentos AS CHAR),
+                ' intentos para materia ID=',
+                CAST(v_id_materia AS CHAR),
+                ' paralelo=',
+                CAST(v_id_paralelo AS CHAR)
+            );
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = v_error_msg;
+        END IF;
+        
+        -- Insertar la asignación
+        INSERT INTO se_cursa (id_materia, id_paralelo, id_aula, id_horario)
+        VALUES (v_id_materia, v_id_paralelo, v_id_aula, v_id_horario)
+        ON DUPLICATE KEY UPDATE 
+            id_aula = VALUES(id_aula),
+            id_horario = VALUES(id_horario);
+        
+        SET v_asignados = v_asignados + 1;
+        
+    END LOOP;
+    
+    CLOSE cur_paralelos;
+    
+    COMMIT;
+    
+    -- Mostrar resumen
+    SELECT 
+        p_id_gestion AS id_gestion,
+        v_total_paralelos AS total_paralelos,
+        v_asignados AS asignados_exitosos,
+        p_max_intentos AS max_intentos_por_paralelo;
+    
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestion` INT)   BEGIN
@@ -265,6 +432,56 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo` (I
     DECLARE v_email VARCHAR(120);
     DECLARE v_password VARCHAR(20);
     DECLARE v_ru INT;
+    DECLARE v_lock_status INT;
+    
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- Liberar el candado en caso de error
+        DO RELEASE_LOCK('lock_creacion_usuario');
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    -- Adquirir un candado exclusivo por 10 segundos
+    SELECT GET_LOCK('lock_creacion_usuario', 10) INTO v_lock_status;
+    
+    IF v_lock_status = 1 THEN
+        START TRANSACTION;
+        
+        -- Ahora es 100% seguro generar esto, nadie más lo está haciendo al mismo tiempo
+        SET v_username = fn_generar_username(p_nombres, p_apellidos);
+        SET v_email = fn_generar_email(v_username);
+        SET v_password = fn_extraer_numero_ci(p_ci);
+        
+        INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
+        VALUES (p_ci, p_nombres, p_apellidos, p_fecha_nac, p_sexo, v_email, 'Activo');
+        
+        SET v_id_persona = LAST_INSERT_ID();
+        
+        INSERT INTO estudiante (id_persona, id_plan, anio_ingreso)
+        VALUES (v_id_persona, p_id_plan, p_anio_ingreso);
+        
+        SELECT ru INTO v_ru FROM estudiante WHERE id_persona = v_id_persona;
+        
+        INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
+        VALUES (v_username, v_password, v_id_persona, 4, 'Activo');
+        
+        COMMIT;
+        
+        -- Soltar el candado para que pase el siguiente
+        DO RELEASE_LOCK('lock_creacion_usuario');
+        
+        SELECT v_id_persona AS id_persona, v_ru AS ru, v_username AS username, v_email AS email;
+    ELSE
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Servidor ocupado: Timeout al intentar generar el usuario. Intente nuevamente.';
+    END IF;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_plan` INT, IN `p_anio_ingreso` VARCHAR(20), IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
+    DECLARE v_id_persona INT;
+    DECLARE v_username VARCHAR(50);
+    DECLARE v_email VARCHAR(120);
+    DECLARE v_ru INT;
     
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -274,10 +491,12 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo` (I
     
     START TRANSACTION;
     
-    -- Generar username, email, password
+    -- Configurar usuario de auditoría
+    SET @current_user_id = p_usuario_audit;
+    
+    -- Generar username y email
     SET v_username = fn_generar_username(p_nombres, p_apellidos);
     SET v_email = fn_generar_email(v_username);
-    SET v_password = fn_extraer_numero_ci(p_ci);
     
     -- Insertar persona
     INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
@@ -285,19 +504,26 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo` (I
     
     SET v_id_persona = LAST_INSERT_ID();
     
-    -- Insertar estudiante (RU se genera con trigger)
+    -- Insertar estudiante
     INSERT INTO estudiante (id_persona, id_plan, anio_ingreso)
     VALUES (v_id_persona, p_id_plan, p_anio_ingreso);
     
     SELECT ru INTO v_ru FROM estudiante WHERE id_persona = v_id_persona;
     
-    -- Insertar usuario
+    -- Insertar usuario con HASH (NO texto plano)
     INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
-    VALUES (v_username, v_password, v_id_persona, 4, 'Activo');
+    VALUES (v_username, p_password_hash, v_id_persona, 4, 'Activo');
     
     COMMIT;
     
-    SELECT v_id_persona AS id_persona, v_ru AS ru, v_username AS username, v_email AS email;
+    -- Devolver resultados
+    SELECT 
+        v_id_persona AS id_persona,
+        v_ru AS ru,
+        v_username AS username,
+        v_email AS email
+    ;
+    
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_estado` VARCHAR(20))   BEGIN
@@ -343,6 +569,46 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario` (IN `p
     COMMIT;
     
     SELECT v_id_persona AS id_persona, v_username AS username, v_email AS email, v_password AS password;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
+    DECLARE v_id_persona INT;
+    DECLARE v_username VARCHAR(50);
+    DECLARE v_email VARCHAR(120);
+    
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    
+    START TRANSACTION;
+    
+    -- Configurar usuario de auditoría
+    SET @current_user_id = p_usuario_audit;
+    
+    -- Generar username y email
+    SET v_username = fn_generar_username(p_nombres, p_apellidos);
+    SET v_email = fn_generar_email(v_username);
+    
+    -- Insertar persona
+    INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
+    VALUES (p_ci, p_nombres, p_apellidos, p_fecha_nac, p_sexo, v_email, 'Activo');
+    
+    SET v_id_persona = LAST_INSERT_ID();
+    
+    -- Insertar usuario con HASH
+    INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
+    VALUES (v_username, p_password_hash, v_id_persona, p_id_rol, 'Activo');
+    
+    COMMIT;
+    
+    SELECT 
+        v_id_persona AS id_persona,
+        v_username AS username,
+        v_email AS email
+    ;
+    
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_aulas` ()   BEGIN
@@ -394,7 +660,36 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_notas_detalle` (IN `p_id
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_paralelos` ()   BEGIN
-    SELECT * FROM paralelo;
+    SELECT 
+        p.id_materia,
+        p.id_paralelo,
+        p.nombre,
+        p.cupo_maximo,
+        -- Conteo dinámico de inscritos activos desde la tabla detalle_inscripcion
+        COALESCE(
+            (SELECT COUNT(*) 
+             FROM detalle_inscripcion d
+             JOIN inscripcion i ON d.id_inscripcion = i.id_inscripcion
+             WHERE d.id_materia = p.id_materia 
+               AND d.id_paralelo = p.id_paralelo 
+               AND i.id_gestion = p.id_gestion 
+               AND d.estado = 'Inscrito'), 
+            0
+        ) AS cupo_actual,
+        -- Cálculo dinámico de vacantes disponibles en la base de datos
+        GREATEST(0, p.cupo_maximo - COALESCE(
+            (SELECT COUNT(*) 
+             FROM detalle_inscripcion d
+             JOIN inscripcion i ON d.id_inscripcion = i.id_inscripcion
+             WHERE d.id_materia = p.id_materia 
+               AND d.id_paralelo = p.id_paralelo 
+               AND i.id_gestion = p.id_gestion 
+               AND d.estado = 'Inscrito'), 
+            0
+        )) AS cupo_disponible,
+        p.id_docente,
+        p.id_gestion
+    FROM paralelo p;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_planes_estudio` ()   BEGIN
@@ -572,6 +867,10 @@ UPDATE DETALLE_INSCRIPCION
 SET estado='Abandono'
 WHERE id_detalle=p_id_detalle;
 COMMIT;
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_set_audit_user` (IN `p_id_usuario` INT)   BEGIN
+    SET @current_user_id = p_id_usuario;
 END$$
 
 --
@@ -2085,7 +2384,16 @@ INSERT INTO `auditoria` (`id_auditoria`, `id_usuario`, `tipo`, `accion`, `fecha`
 (2041, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:35:15'),
 (2042, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '07:35:37'),
 (2043, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '12:45:31'),
-(2044, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '12:46:25');
+(2044, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '12:46:25'),
+(2045, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:02:53'),
+(2046, 7, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:03:00'),
+(2047, 7, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:04:47'),
+(2048, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:04:53'),
+(2049, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:17:10'),
+(2050, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:19:54'),
+(2051, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '15:42:45'),
+(2052, 7, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '15:42:58'),
+(2053, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '16:44:21');
 
 -- --------------------------------------------------------
 
@@ -3023,11 +3331,8 @@ INSERT INTO `gestion` (`id_gestion`, `periodo`, `estado`) VALUES
 (22, 'Invierno/2025', 'Cerrada'),
 (23, 'II/2025', 'Cerrada'),
 (24, 'Verano/2026', 'Cerrada'),
-(25, 'I/2026', 'Activa'),
-(26, 'Invierno/2026', 'Activa'),
-(27, 'II/2026', 'Inactiva'),
-(28, 'Verano/2027', 'Inactiva'),
-(29, 'I/2027', 'Inactiva');
+(25, 'I/2026', 'Cerrada'),
+(26, 'Invierno/2026', 'Activa');
 
 -- --------------------------------------------------------
 
@@ -3504,9 +3809,348 @@ CREATE TABLE `paralelo` (
   `nombre` varchar(10) NOT NULL,
   `cupo_maximo` int(11) NOT NULL,
   `cupo_actual` int(11) NOT NULL DEFAULT 0,
-  `id_docente` int(11) NOT NULL,
+  `id_docente` int(11) DEFAULT NULL,
   `id_gestion` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `paralelo`
+--
+
+INSERT INTO `paralelo` (`id_materia`, `id_paralelo`, `nombre`, `cupo_maximo`, `cupo_actual`, `id_docente`, `id_gestion`) VALUES
+(1, 1, 'A', 40, 0, NULL, 26),
+(2, 1, 'A', 40, 0, NULL, 26),
+(3, 1, 'A', 40, 0, NULL, 26),
+(4, 1, 'A', 40, 0, NULL, 26),
+(5, 1, 'A', 40, 0, NULL, 26),
+(6, 1, 'A', 40, 0, NULL, 26),
+(7, 1, 'A', 40, 0, NULL, 26),
+(8, 1, 'A', 40, 0, NULL, 26),
+(9, 1, 'A', 40, 0, NULL, 26),
+(10, 1, 'A', 40, 0, NULL, 26),
+(11, 1, 'A', 40, 0, NULL, 26),
+(12, 1, 'A', 40, 0, NULL, 26),
+(13, 1, 'A', 40, 0, NULL, 26),
+(14, 1, 'A', 40, 0, NULL, 26),
+(15, 1, 'A', 40, 0, NULL, 26),
+(16, 1, 'A', 40, 0, NULL, 26),
+(17, 1, 'A', 40, 0, NULL, 26),
+(18, 1, 'A', 40, 0, NULL, 26),
+(19, 1, 'A', 40, 0, NULL, 26),
+(20, 1, 'A', 40, 0, NULL, 26),
+(21, 1, 'A', 40, 0, 29, 26),
+(22, 1, 'A', 40, 0, 29, 26),
+(23, 1, 'A', 40, 0, NULL, 26),
+(24, 1, 'A', 40, 0, NULL, 26),
+(25, 1, 'A', 40, 0, NULL, 26),
+(26, 1, 'A', 40, 0, NULL, 26),
+(27, 1, 'A', 40, 0, NULL, 26),
+(28, 1, 'A', 40, 0, NULL, 26),
+(29, 1, 'A', 40, 0, NULL, 26),
+(30, 1, 'A', 40, 0, NULL, 26),
+(31, 1, 'A', 40, 0, NULL, 26),
+(32, 1, 'A', 40, 0, NULL, 26),
+(33, 1, 'A', 40, 0, NULL, 26),
+(34, 1, 'A', 40, 0, NULL, 26),
+(35, 1, 'A', 40, 0, NULL, 26),
+(36, 1, 'A', 40, 0, NULL, 26),
+(37, 1, 'A', 40, 0, NULL, 26),
+(38, 1, 'A', 40, 0, NULL, 26),
+(39, 1, 'A', 40, 0, NULL, 26),
+(40, 1, 'A', 40, 0, NULL, 26),
+(41, 1, 'A', 40, 0, NULL, 26),
+(42, 1, 'A', 40, 0, NULL, 26),
+(43, 1, 'A', 40, 0, NULL, 26),
+(44, 1, 'A', 40, 0, NULL, 26),
+(45, 1, 'A', 40, 0, NULL, 26),
+(46, 1, 'A', 40, 0, NULL, 26),
+(47, 1, 'A', 40, 0, NULL, 26),
+(48, 1, 'A', 40, 0, NULL, 26),
+(49, 1, 'A', 40, 0, NULL, 26),
+(50, 1, 'A', 40, 0, NULL, 26),
+(51, 1, 'A', 40, 0, NULL, 26),
+(52, 1, 'A', 40, 0, NULL, 26),
+(53, 1, 'A', 40, 0, NULL, 26),
+(54, 1, 'A', 40, 0, NULL, 26),
+(55, 1, 'A', 40, 0, NULL, 26),
+(56, 1, 'A', 40, 0, NULL, 26),
+(57, 1, 'A', 40, 0, NULL, 26),
+(58, 1, 'A', 40, 0, NULL, 26),
+(59, 1, 'A', 40, 0, NULL, 26),
+(60, 1, 'A', 40, 0, NULL, 26),
+(61, 1, 'A', 40, 0, NULL, 26),
+(62, 1, 'A', 40, 0, NULL, 26),
+(63, 1, 'A', 40, 0, NULL, 26),
+(64, 1, 'A', 40, 0, NULL, 26),
+(65, 1, 'A', 40, 0, NULL, 26),
+(66, 1, 'A', 40, 0, NULL, 26),
+(67, 1, 'A', 40, 0, NULL, 26),
+(68, 1, 'A', 40, 0, NULL, 26),
+(69, 1, 'A', 40, 0, NULL, 26),
+(70, 1, 'A', 40, 0, NULL, 26),
+(71, 1, 'A', 40, 0, NULL, 26),
+(72, 1, 'A', 40, 0, NULL, 26),
+(73, 1, 'A', 40, 0, NULL, 26),
+(74, 1, 'A', 40, 0, NULL, 26),
+(75, 1, 'A', 40, 0, NULL, 26),
+(76, 1, 'A', 40, 0, NULL, 26),
+(77, 1, 'A', 40, 0, NULL, 26),
+(78, 1, 'A', 40, 0, NULL, 26),
+(79, 1, 'A', 40, 0, NULL, 26),
+(80, 1, 'A', 40, 0, NULL, 26),
+(81, 1, 'A', 40, 0, NULL, 26),
+(82, 1, 'A', 40, 0, NULL, 26),
+(83, 1, 'A', 40, 0, NULL, 26),
+(84, 1, 'A', 40, 0, NULL, 26),
+(85, 1, 'A', 40, 0, NULL, 26),
+(86, 1, 'A', 40, 0, NULL, 26),
+(87, 1, 'A', 40, 0, NULL, 26),
+(88, 1, 'A', 40, 0, NULL, 26),
+(89, 1, 'A', 40, 0, NULL, 26),
+(90, 1, 'A', 40, 0, NULL, 26),
+(91, 1, 'A', 40, 0, NULL, 26),
+(92, 1, 'A', 40, 0, NULL, 26),
+(93, 1, 'A', 40, 0, NULL, 26),
+(94, 1, 'A', 40, 0, NULL, 26),
+(95, 1, 'A', 40, 0, NULL, 26),
+(96, 1, 'A', 40, 0, NULL, 26),
+(97, 1, 'A', 40, 0, NULL, 26),
+(98, 1, 'A', 40, 0, NULL, 26),
+(99, 1, 'A', 40, 0, NULL, 26),
+(100, 1, 'A', 40, 0, NULL, 26),
+(101, 1, 'A', 40, 0, NULL, 26),
+(102, 1, 'A', 40, 0, NULL, 26),
+(103, 1, 'A', 40, 0, NULL, 26),
+(104, 1, 'A', 40, 0, NULL, 26),
+(105, 1, 'A', 40, 0, NULL, 26),
+(106, 1, 'A', 40, 0, NULL, 26),
+(107, 1, 'A', 40, 0, NULL, 26),
+(108, 1, 'A', 40, 0, NULL, 26),
+(109, 1, 'A', 40, 0, NULL, 26),
+(110, 1, 'A', 40, 0, NULL, 26),
+(111, 1, 'A', 40, 0, NULL, 26),
+(112, 1, 'A', 40, 0, NULL, 26),
+(113, 1, 'A', 40, 0, NULL, 26),
+(114, 1, 'A', 40, 0, NULL, 26),
+(115, 1, 'A', 40, 0, NULL, 26),
+(116, 1, 'A', 40, 0, NULL, 26),
+(117, 1, 'A', 40, 0, NULL, 26),
+(118, 1, 'A', 40, 0, NULL, 26),
+(119, 1, 'A', 40, 0, NULL, 26),
+(120, 1, 'A', 40, 0, NULL, 26),
+(121, 1, 'A', 40, 0, NULL, 26),
+(122, 1, 'A', 40, 0, NULL, 26),
+(123, 1, 'A', 40, 0, NULL, 26),
+(124, 1, 'A', 40, 0, NULL, 26),
+(125, 1, 'A', 40, 0, NULL, 26),
+(126, 1, 'A', 40, 0, NULL, 26),
+(127, 1, 'A', 40, 0, NULL, 26),
+(128, 1, 'A', 40, 0, NULL, 26),
+(129, 1, 'A', 40, 0, NULL, 26),
+(130, 1, 'A', 40, 0, NULL, 26),
+(131, 1, 'A', 40, 0, NULL, 26),
+(132, 1, 'A', 40, 0, NULL, 26),
+(133, 1, 'A', 40, 0, NULL, 26),
+(134, 1, 'A', 40, 0, NULL, 26),
+(135, 1, 'A', 40, 0, NULL, 26),
+(136, 1, 'A', 40, 0, NULL, 26),
+(137, 1, 'A', 40, 0, NULL, 26),
+(138, 1, 'A', 40, 0, NULL, 26),
+(139, 1, 'A', 40, 0, NULL, 26),
+(140, 1, 'A', 40, 0, NULL, 26),
+(141, 1, 'A', 40, 0, NULL, 26),
+(142, 1, 'A', 40, 0, NULL, 26),
+(143, 1, 'A', 40, 0, NULL, 26),
+(144, 1, 'A', 40, 0, NULL, 26),
+(145, 1, 'A', 40, 0, NULL, 26),
+(146, 1, 'A', 40, 0, NULL, 26),
+(147, 1, 'A', 40, 0, NULL, 26),
+(148, 1, 'A', 40, 0, NULL, 26),
+(149, 1, 'A', 40, 0, NULL, 26),
+(150, 1, 'A', 40, 0, NULL, 26),
+(151, 1, 'A', 40, 0, NULL, 26),
+(152, 1, 'A', 40, 0, NULL, 26),
+(153, 1, 'A', 40, 0, NULL, 26),
+(154, 1, 'A', 40, 0, NULL, 26),
+(155, 1, 'A', 40, 0, NULL, 26),
+(156, 1, 'A', 40, 0, NULL, 26),
+(157, 1, 'A', 40, 0, NULL, 26),
+(158, 1, 'A', 40, 0, NULL, 26),
+(159, 1, 'A', 40, 0, NULL, 26),
+(160, 1, 'A', 40, 0, NULL, 26),
+(161, 1, 'A', 40, 0, NULL, 26),
+(162, 1, 'A', 40, 0, NULL, 26),
+(163, 1, 'A', 40, 0, NULL, 26),
+(164, 1, 'A', 40, 0, NULL, 26),
+(165, 1, 'A', 40, 0, NULL, 26),
+(166, 1, 'A', 40, 0, NULL, 26),
+(167, 1, 'A', 40, 0, NULL, 26),
+(168, 1, 'A', 40, 0, NULL, 26),
+(169, 1, 'A', 40, 0, NULL, 26),
+(170, 1, 'A', 40, 0, NULL, 26),
+(171, 1, 'A', 40, 0, NULL, 26),
+(172, 1, 'A', 40, 0, NULL, 26),
+(173, 1, 'A', 40, 0, NULL, 26),
+(174, 1, 'A', 40, 0, NULL, 26),
+(175, 1, 'A', 40, 0, NULL, 26),
+(176, 1, 'A', 40, 0, NULL, 26),
+(177, 1, 'A', 40, 0, NULL, 26),
+(178, 1, 'A', 40, 0, NULL, 26),
+(179, 1, 'A', 40, 0, NULL, 26),
+(180, 1, 'A', 40, 0, NULL, 26),
+(181, 1, 'A', 40, 0, NULL, 26),
+(182, 1, 'A', 40, 0, NULL, 26),
+(183, 1, 'A', 40, 0, NULL, 26),
+(184, 1, 'A', 40, 0, NULL, 26),
+(185, 1, 'A', 40, 0, NULL, 26),
+(186, 1, 'A', 40, 0, NULL, 26),
+(187, 1, 'A', 40, 0, NULL, 26),
+(188, 1, 'A', 40, 0, NULL, 26),
+(189, 1, 'A', 40, 0, NULL, 26),
+(190, 1, 'A', 40, 0, NULL, 26),
+(191, 1, 'A', 40, 0, NULL, 26),
+(192, 1, 'A', 40, 0, NULL, 26),
+(193, 1, 'A', 40, 0, NULL, 26),
+(194, 1, 'A', 40, 0, NULL, 26),
+(195, 1, 'A', 40, 0, NULL, 26),
+(196, 1, 'A', 40, 0, NULL, 26),
+(197, 1, 'A', 40, 0, NULL, 26),
+(198, 1, 'A', 40, 0, NULL, 26),
+(199, 1, 'A', 40, 0, NULL, 26),
+(200, 1, 'A', 40, 0, NULL, 26),
+(201, 1, 'A', 40, 0, NULL, 26),
+(202, 1, 'A', 40, 0, NULL, 26),
+(203, 1, 'A', 40, 0, NULL, 26),
+(204, 1, 'A', 40, 0, NULL, 26),
+(205, 1, 'A', 40, 0, NULL, 26),
+(206, 1, 'A', 40, 0, NULL, 26),
+(207, 1, 'A', 40, 0, NULL, 26),
+(208, 1, 'A', 40, 0, NULL, 26),
+(209, 1, 'A', 40, 0, NULL, 26),
+(210, 1, 'A', 40, 0, NULL, 26),
+(211, 1, 'A', 40, 0, NULL, 26),
+(212, 1, 'A', 40, 0, NULL, 26),
+(213, 1, 'A', 40, 0, NULL, 26),
+(214, 1, 'A', 40, 0, NULL, 26),
+(215, 1, 'A', 40, 0, NULL, 26),
+(216, 1, 'A', 40, 0, NULL, 26),
+(217, 1, 'A', 40, 0, NULL, 26),
+(218, 1, 'A', 40, 0, NULL, 26),
+(219, 1, 'A', 40, 0, NULL, 26),
+(220, 1, 'A', 40, 0, NULL, 26),
+(221, 1, 'A', 40, 0, NULL, 26),
+(222, 1, 'A', 40, 0, NULL, 26),
+(223, 1, 'A', 40, 0, NULL, 26),
+(224, 1, 'A', 40, 0, NULL, 26),
+(225, 1, 'A', 40, 0, NULL, 26),
+(226, 1, 'A', 40, 0, NULL, 26),
+(227, 1, 'A', 40, 0, NULL, 26),
+(228, 1, 'A', 40, 0, NULL, 26),
+(229, 1, 'A', 40, 0, NULL, 26),
+(230, 1, 'A', 40, 0, NULL, 26),
+(231, 1, 'A', 40, 0, NULL, 26),
+(232, 1, 'A', 40, 0, NULL, 26),
+(233, 1, 'A', 40, 0, NULL, 26),
+(234, 1, 'A', 40, 0, NULL, 26),
+(235, 1, 'A', 40, 0, NULL, 26),
+(236, 1, 'A', 40, 0, NULL, 26),
+(237, 1, 'A', 40, 0, NULL, 26),
+(238, 1, 'A', 40, 0, NULL, 26),
+(239, 1, 'A', 40, 0, NULL, 26),
+(240, 1, 'A', 40, 0, NULL, 26),
+(241, 1, 'A', 40, 0, NULL, 26),
+(242, 1, 'A', 40, 0, NULL, 26),
+(243, 1, 'A', 40, 0, NULL, 26),
+(244, 1, 'A', 40, 0, NULL, 26),
+(245, 1, 'A', 40, 0, NULL, 26),
+(246, 1, 'A', 40, 0, NULL, 26),
+(247, 1, 'A', 40, 0, NULL, 26),
+(248, 1, 'A', 40, 0, NULL, 26),
+(249, 1, 'A', 40, 0, NULL, 26),
+(250, 1, 'A', 40, 0, NULL, 26),
+(251, 1, 'A', 40, 0, NULL, 26),
+(252, 1, 'A', 40, 0, NULL, 26),
+(253, 1, 'A', 40, 0, NULL, 26),
+(254, 1, 'A', 40, 0, NULL, 26),
+(255, 1, 'A', 40, 0, NULL, 26),
+(256, 1, 'A', 40, 0, NULL, 26),
+(257, 1, 'A', 40, 0, NULL, 26),
+(258, 1, 'A', 40, 0, NULL, 26),
+(259, 1, 'A', 40, 0, NULL, 26),
+(260, 1, 'A', 40, 0, NULL, 26),
+(261, 1, 'A', 40, 0, NULL, 26),
+(262, 1, 'A', 40, 0, NULL, 26),
+(263, 1, 'A', 40, 0, NULL, 26),
+(264, 1, 'A', 40, 0, NULL, 26),
+(265, 1, 'A', 40, 0, NULL, 26),
+(266, 1, 'A', 40, 0, NULL, 26),
+(267, 1, 'A', 40, 0, NULL, 26),
+(268, 1, 'A', 40, 0, NULL, 26),
+(269, 1, 'A', 40, 0, NULL, 26),
+(270, 1, 'A', 40, 0, NULL, 26),
+(271, 1, 'A', 40, 0, NULL, 26),
+(272, 1, 'A', 40, 0, NULL, 26),
+(273, 1, 'A', 40, 0, NULL, 26),
+(274, 1, 'A', 40, 0, NULL, 26),
+(275, 1, 'A', 40, 0, NULL, 26),
+(276, 1, 'A', 40, 0, NULL, 26),
+(277, 1, 'A', 40, 0, NULL, 26),
+(278, 1, 'A', 40, 0, NULL, 26),
+(279, 1, 'A', 40, 0, NULL, 26),
+(280, 1, 'A', 40, 0, NULL, 26),
+(281, 1, 'A', 40, 0, NULL, 26),
+(282, 1, 'A', 40, 0, NULL, 26),
+(283, 1, 'A', 40, 0, NULL, 26),
+(284, 1, 'A', 40, 0, NULL, 26),
+(285, 1, 'A', 40, 0, NULL, 26),
+(286, 1, 'A', 40, 0, NULL, 26),
+(287, 1, 'A', 40, 0, NULL, 26),
+(288, 1, 'A', 40, 0, NULL, 26),
+(289, 1, 'A', 40, 0, NULL, 26),
+(290, 1, 'A', 40, 0, NULL, 26),
+(291, 1, 'A', 40, 0, NULL, 26),
+(292, 1, 'A', 40, 0, NULL, 26),
+(293, 1, 'A', 40, 0, NULL, 26),
+(294, 1, 'A', 40, 0, NULL, 26),
+(295, 1, 'A', 40, 0, NULL, 26),
+(296, 1, 'A', 40, 0, NULL, 26),
+(297, 1, 'A', 40, 0, NULL, 26),
+(298, 1, 'A', 40, 0, NULL, 26),
+(299, 1, 'A', 40, 0, NULL, 26),
+(300, 1, 'A', 40, 0, NULL, 26),
+(301, 1, 'A', 40, 0, NULL, 26),
+(302, 1, 'A', 40, 0, NULL, 26),
+(303, 1, 'A', 40, 0, NULL, 26),
+(304, 1, 'A', 40, 0, NULL, 26),
+(305, 1, 'A', 40, 0, NULL, 26),
+(306, 1, 'A', 40, 0, NULL, 26),
+(307, 1, 'A', 40, 0, NULL, 26),
+(308, 1, 'A', 40, 0, NULL, 26),
+(309, 1, 'A', 40, 0, NULL, 26);
+
+--
+-- Disparadores `paralelo`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_validar_max_paralelos_docente` BEFORE UPDATE ON `paralelo` FOR EACH ROW BEGIN
+    DECLARE v_cantidad INT DEFAULT 0;
+    
+    -- Solo validar cuando se asigna un docente (no cuando se quita)
+    IF NEW.id_docente IS NOT NULL THEN
+        SELECT COUNT(*) INTO v_cantidad
+        FROM paralelo
+        WHERE id_docente = NEW.id_docente
+          AND id_gestion = NEW.id_gestion
+          AND NOT (id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo);
+        
+        IF v_cantidad >= 3 THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Error: El docente ya dirige 3 paralelos en esta gestión. No puede tomar más.';
+        END IF;
+    END IF;
+END
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -4021,7 +4665,13 @@ DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `trg_auditoria_persona_insert` AFTER INSERT ON `persona` FOR EACH ROW BEGIN
     INSERT INTO auditoria (id_usuario, tipo, accion, fecha, hora)
-    VALUES (@current_user_id, 'INSERT', CONCAT('Nueva persona: ', NEW.nombres, ' ', NEW.apellidos, ' (CI: ', NEW.ci, ')'), CURDATE(), CURTIME());
+    VALUES (
+        COALESCE(@current_user_id, 0),  -- Si es NULL, usar 0 (usuario sistema)
+        'INSERT', 
+        CONCAT('Nueva persona: ', NEW.nombres, ' ', NEW.apellidos, ' (CI: ', NEW.ci, ')'), 
+        CURDATE(), 
+        CURTIME()
+    );
 END
 $$
 DELIMITER ;
@@ -6407,15 +7057,22 @@ CREATE TRIGGER `trg_auto_username_usuario` BEFORE INSERT ON `usuario` FOR EACH R
     SELECT nombres, apellidos, ci INTO v_nombres, v_apellidos, v_ci
     FROM persona WHERE id_persona = NEW.id_persona;
     
-    -- Generar username si viene vacío
+    -- ✅ Generar username si viene vacío
     IF NEW.username IS NULL OR NEW.username = '' THEN
         SET NEW.username = fn_generar_username(v_nombres, v_apellidos);
     END IF;
     
-    -- Generar password (parte numérica del CI) si viene vacío
+    -- ❌ ELIMINADO: NO generar contraseña automáticamente
+    -- IF NEW.password_hash IS NULL OR NEW.password_hash = '' THEN
+    --     SET NEW.password_hash = fn_extraer_numero_ci(v_ci);
+    -- END IF;
+    
+    -- ✅ Validar que la contraseña NO esté vacía
     IF NEW.password_hash IS NULL OR NEW.password_hash = '' THEN
-        SET NEW.password_hash = fn_extraer_numero_ci(v_ci);
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: La contraseña debe ser generada en el backend con BCrypt.';
     END IF;
+    
 END
 $$
 DELIMITER ;
@@ -6547,7 +7204,7 @@ ALTER TABLE `nota`
 -- Indices de la tabla `paralelo`
 --
 ALTER TABLE `paralelo`
-  ADD PRIMARY KEY (`id_materia`,`id_paralelo`),
+  ADD PRIMARY KEY (`id_materia`,`id_paralelo`,`id_gestion`),
   ADD KEY `fk_paralelo_docente` (`id_docente`),
   ADD KEY `fk_paralelo_gestion` (`id_gestion`);
 
@@ -6612,7 +7269,7 @@ ALTER TABLE `usuario`
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2045;
+  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2054;
 
 --
 -- AUTO_INCREMENT de la tabla `aula`
@@ -6642,7 +7299,7 @@ ALTER TABLE `detalle_inscripcion`
 -- AUTO_INCREMENT de la tabla `gestion`
 --
 ALTER TABLE `gestion`
-  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
+  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
 
 --
 -- AUTO_INCREMENT de la tabla `horario`
@@ -6701,7 +7358,7 @@ ALTER TABLE `usuario`
 --
 ALTER TABLE `administrativo`
   ADD CONSTRAINT `fk_admin_carrera` FOREIGN KEY (`id_carrera`) REFERENCES `carrera` (`id_carrera`),
-  ADD CONSTRAINT `fk_admin_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`);
+  ADD CONSTRAINT `fk_admin_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`) ON DELETE CASCADE;
 
 --
 -- Filtros para la tabla `auditoria`
@@ -6739,13 +7396,13 @@ ALTER TABLE `director_carrera_asignacion`
 -- Filtros para la tabla `docente`
 --
 ALTER TABLE `docente`
-  ADD CONSTRAINT `fk_docente_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`);
+  ADD CONSTRAINT `fk_docente_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`) ON DELETE CASCADE;
 
 --
 -- Filtros para la tabla `estudiante`
 --
 ALTER TABLE `estudiante`
-  ADD CONSTRAINT `fk_estudiante_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`),
+  ADD CONSTRAINT `fk_estudiante_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_estudiante_plan` FOREIGN KEY (`id_plan`) REFERENCES `plan_estudio` (`id_plan`);
 
 --
@@ -6802,7 +7459,7 @@ ALTER TABLE `se_cursa`
 -- Filtros para la tabla `usuario`
 --
 ALTER TABLE `usuario`
-  ADD CONSTRAINT `fk_usuario_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`),
+  ADD CONSTRAINT `fk_usuario_persona` FOREIGN KEY (`id_persona`) REFERENCES `persona` (`id_persona`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_usuario_rol` FOREIGN KEY (`id_rol`) REFERENCES `rol` (`id_rol`);
 COMMIT;
 

@@ -1041,28 +1041,95 @@ CREATE TRIGGER `trg_validar_usuario_unico` BEFORE INSERT ON `usuario` FOR EACH R
 END
 ```
 
-## 6. RESTRICCIONES DE LLAVES FORÁNEAS (ON DELETE CASCADE)
-
-Para evitar bloqueos al eliminar registros dependientes de una persona (estudiante, docente, usuario, administrativo), se configuraron las siguientes llaves foráneas en cascada:
+## 6. RESTRICCIONES DDL Y ALTERACIONES ESTRUCTURALES
 
 ```sql
+-- Llaves foráneas con eliminación en cascada para mantener la integridad de personas:
 ALTER TABLE usuario ADD CONSTRAINT fk_usuario_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
 ALTER TABLE estudiante ADD CONSTRAINT fk_estudiante_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
 ALTER TABLE docente ADD CONSTRAINT fk_docente_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
 ALTER TABLE administrativo ADD CONSTRAINT fk_admin_persona FOREIGN KEY (id_persona) REFERENCES persona(id_persona) ON DELETE CASCADE;
+
+-- Permitir docente vacante (NULL) en paralelos recién aperturados:
+ALTER TABLE paralelo MODIFY COLUMN id_docente INT(11) NULL DEFAULT NULL;
+
+-- Llave Primaria compuesta para permitir el mismo paralelo (ej. Paralelo A) en distintas gestiones académicas:
+ALTER TABLE paralelo DROP PRIMARY KEY, ADD PRIMARY KEY (id_materia, id_paralelo, id_gestion);
 ```
 
-## 7. RESUMEN COMPLETO DE OBJETOS DE BASE DE DATOS
+---
 
-| Tipo de Objeto | Cantidad | Descripción |
-| --- | --- | --- |
-| Funciones | 13 | Lógica de validación, formato y cupos |
-| Procedimientos CRUD | 52 | Operaciones directas de creación, consulta y actualización |
-| Procedimientos Especiales & Seguridad | 6 | `sp_insertar_estudiante_completo_seguro`, `sp_insertar_persona_usuario_seguro`, `sp_set_audit_user`, etc. |
-| Procedimientos de Negocio y Paralelos | 3 | `sp_realizar_inscripcion`, `sp_retirar_inscripcion`, `sp_aperturar_paralelo_completo` |
-| Procedimientos de Cierre | 2 | `sp_preview_cierre_gestion`, `sp_cerrar_gestion` |
-| Procedimientos con Transacciones & Locks | 9 | Manejo de concurrencia con `GET_LOCK()` / `RELEASE_LOCK()` y `@current_user_id` |
-| Triggers | 25 | Triggers de auditoría, cupos, límites, integridad y asignación docente |
-| Restricciones Cascade | 4 | Llaves foráneas con `ON DELETE CASCADE` |
-| Alteraciones de Columna | 1 | `paralelo.id_docente` → `DEFAULT NULL` |
-| **TOTAL** | **115** | **Objetos totales activos en MariaDB / MySQL** |
+## 7. CUADRO DE MANDO Y RESUMEN MAESTRO DE OBJETOS PROCEDURALES
+
+### 7.1 Tabla de Funciones Almacenadas (13)
+
+| Función | Tipo de Retorno | Descripción / Propósito |
+| :--- | :--- | :--- |
+| `fn_cupo_disponible` | `BOOLEAN` | Verifica si la cantidad de inscritos es menor al cupo máximo del paralelo |
+| `fn_existe_estudiante` | `BOOLEAN` | Valida la presencia de un estudiante en la tabla `estudiante` |
+| `fn_existe_gestion` | `BOOLEAN` | Verifica si existe una gestión académica activa por ID |
+| `fn_existe_materia` | `BOOLEAN` | Confirma la existencia de una asignatura registrada |
+| `fn_existe_paralelo` | `BOOLEAN` | Valida la existencia de la tupla (materia, paralelo) |
+| `fn_extraer_numero_ci` | `VARCHAR(20)` | Filtra únicamente los dígitos numéricos del CI para generación de claves |
+| `fn_generar_email_institucional` | `VARCHAR(100)` | Genera correos con dominio `@fcpn.edu.bo` a partir de nombres y apellidos |
+| `fn_generar_username` | `VARCHAR(50)` | Genera nombres de usuario únicos resolviendo colisiones mediante contador |
+| `fn_materia_aprobada` | `BOOLEAN` | Determina si un estudiante ya aprobó la materia especificada |
+| `fn_materia_cursando` | `BOOLEAN` | Verifica si la materia está actualmente en estado de cursado activo |
+| `fn_max_criterios_alcanzado` | `BOOLEAN` | Garantiza que la suma de ponderaciones no supere el 100% |
+| `fn_nombre_completo` | `VARCHAR(200)` | Concatena nombres y apellidos de la tabla `persona` |
+| `fn_obtener_nota_final` | `FLOAT` | Calcula la suma ponderada de notas en un detalle de inscripción |
+
+---
+
+### 7.2 Tabla de Procedimientos de Negocio y Transaccionales (14)
+
+| Procedimiento | Ámbito / Módulo | Características y Manejo de Concurrencia |
+| :--- | :--- | :--- |
+| `sp_realizar_inscripcion` | Inscripción | Transaccional. Valida prerrequisitos, choque de horarios y actualiza cupos |
+| `sp_retirar_inscripcion` | Inscripción | Libera cupo del paralelo y actualiza el estado a 'Retirado' |
+| `sp_aperturar_paralelo_completo` | Oferta Académica | Asigna materia, paralelo, aula y horario validando colisiones de espacio |
+| `sp_preview_cierre_gestion` | Cierre de Gestión | Previsualización de consolidados, promovidos y reprobados |
+| `sp_cerrar_gestion` | Cierre de Gestión | Cierre transaccional definitivo de la gestión académica |
+| `sp_insertar_estudiante_completo_seguro` | Seguridad / Usuarios | Utiliza `GET_LOCK()` y `@current_user_id` para inserción atómica de estudiantes |
+| `sp_insertar_persona_usuario_seguro` | Seguridad / Usuarios | Inserción con hash BCrypt de usuarios de sistema |
+| `sp_set_audit_user` | Auditoría | Asigna la variable de sesión `@current_user_id` para trazabilidad |
+| `sp_obtener_paralelos` | Oferta Académica | Calcula dinámicamente `cupo_actual` e `cupo_disponible` en SQL |
+| `sp_crear_aula` | Espacios | Registro de aulas con validación de capacidad |
+| `sp_crear_gestion` | Gestión | Creación de periodos lectivos (ej. I/2026, II/2026, Invierno/2026) |
+| `sp_crear_criterio` | Evaluaciones | Registro de ponderaciones de materias |
+| `sp_crear_nota` | Calificaciones | Asignación de calificaciones por criterio |
+| `sp_eliminar_paralelo` | Oferta Académica | Eliminación en cascada de paralelos ofertados |
+
+---
+
+### 7.3 Tabla de Triggers de Base de Datos (25)
+
+| Trigger | Tabla Origen | Evento | Descripción de la Regla de Negocio |
+| :--- | :--- | :--- | :--- |
+| `trg_validar_ponderacion_criterio` | `criterio_evaluacion` | `BEFORE INSERT` | Impide que la suma de criterios supere el 100% |
+| `trg_auditoria_nuevo_detalle_inscripcion` | `detalle_inscripcion` | `AFTER INSERT` | Registra en auditoría las inscripciones de materias |
+| `trg_auditoria_retiro_materia` | `detalle_inscripcion` | `AFTER UPDATE` | Audita el retiro de materias por estudiantes |
+| `trg_validar_inscripcion_paralelo_cupo` | `detalle_inscripcion` | `BEFORE INSERT` | Bloquea la inscripción si el paralelo no tiene cupo disponible |
+| `trg_auditoria_materia_actualizada` | `materia` | `AFTER UPDATE` | Guarda trazabilidad de cambios en siglas o nombres de materias |
+| `trg_auditoria_nueva_materia` | `materia` | `AFTER INSERT` | Audita la creación de nuevas asignaturas |
+| `trg_auditoria_nota_modificada` | `nota` | `AFTER UPDATE` | Registra cambios de calificaciones para evitar fraudes |
+| `trg_auditoria_nueva_nota` | `nota` | `AFTER INSERT` | Auditoría de ingreso de notas iniciales |
+| `trg_validar_nota_rango` | `nota` | `BEFORE INSERT` | Enforza que la nota esté estrictamente entre 0 y 100 |
+| `trg_validar_max_paralelos_docente` | `paralelo` | `BEFORE UPDATE` | Valida que un docente no pueda dirigir más de 3 materias por gestión |
+| `trg_auditoria_choque_docente` | `se_cursa` | `BEFORE INSERT` | Evita que un docente tenga asignaciones en aulas/horarios colisionados |
+| `trg_auditoria_nuevo_usuario` | `usuario` | `AFTER INSERT` | Audita la creación de usuarios en el sistema |
+| `trg_auto_username_usuario` | `usuario` | `BEFORE INSERT` | Genera el username automáticamente si viene vacío |
+| `trg_validar_usuario_unico` | `usuario` | `BEFORE INSERT` | Enforza que una persona solo posea 1 usuario activo |
+
+---
+
+### 7.4 Resumen Consolidado de Objetos en MariaDB / MySQL
+
+| Categoría de Objetos | Cantidad | Descripción General |
+| :--- | :---: | :--- |
+| **Funciones Almacenadas** | 13 | Lógica procedimental de cálculo de cupos, contraseñas, correos y validaciones |
+| **Procedimientos Almacenados (CRUD y Especiales)** | 67 | Operaciones atómicas de gestión, inscripciones, notas y cierres transaccionales |
+| **Triggers Activos** | 25 | Reglas de negocio automáticas, validación de cupos, choques y auditoría |
+| **Restricciones Foreign Key Cascade** | 4 | Limpieza en cascada al eliminar registros principales (`persona`) |
+| **Alteraciones Estructurales y Claves** | 2 | Llave Primaria compuesta y permisibilidad de docentes vacantes (`NULL`) |
+| **TOTAL GENERAL DE OBJETOS** | **111** | **Total de objetos procedimentales activos en MariaDB / MySQL** |

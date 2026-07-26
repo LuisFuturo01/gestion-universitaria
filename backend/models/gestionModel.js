@@ -57,39 +57,36 @@ export const iniciarGestionConParalelos = async (periodo, usuarioAudit = 1) => {
     try {
         await connection.beginTransaction();
 
-        // 0. Asegurar que la columna id_docente permita NULL en la base de datos MariaDB
+        // 0. Asegurar que la Llave Primaria incluya id_gestion y que id_docente permita NULL
+        try {
+            await connection.query('ALTER TABLE paralelo DROP PRIMARY KEY, ADD PRIMARY KEY (id_materia, id_paralelo, id_gestion)');
+        } catch (ePK) {}
         try {
             await connection.query('ALTER TABLE paralelo MODIFY COLUMN id_docente INT(11) NULL DEFAULT NULL');
-        } catch (eAlter) {
-            /* ignora si ya acepta NULL o si falla alter */
-        }
+        } catch (eAlter) {}
 
         // Configurar usuario de auditoría para evitar registros fantasma
         await connection.query('SET @current_user_id = ?', [usuarioAudit || 1]);
 
         // 1. Verificar si ya existe una gestión con ese código de periodo
+        let newIdGestion;
         const [gestionesExistentes] = await connection.query(
             'SELECT id_gestion, estado FROM gestion WHERE periodo = ?',
             [periodo]
         );
         if (gestionesExistentes.length > 0) {
-            throw new Error(`La gestión con periodo '${periodo}' ya se encuentra registrada en el sistema.`);
+            if (gestionesExistentes[0].estado === 'Activa') {
+                throw new Error(`La gestión con periodo '${periodo}' ya se encuentra actualmente activa.`);
+            }
+            newIdGestion = gestionesExistentes[0].id_gestion;
+            await connection.query("UPDATE gestion SET estado = 'Activa' WHERE id_gestion = ?", [newIdGestion]);
+        } else {
+            const [resGestion] = await connection.query(
+                "INSERT INTO gestion (periodo, estado) VALUES (?, 'Activa')",
+                [periodo]
+            );
+            newIdGestion = resGestion.insertId;
         }
-
-        // 2. Verificar si hay alguna gestión actualmente "Activa"
-        const [gestionesActivas] = await connection.query(
-            "SELECT id_gestion, periodo FROM gestion WHERE estado = 'Activa'"
-        );
-        if (gestionesActivas.length > 0) {
-            throw new Error(`Ya existe la gestión activa '${gestionesActivas[0].periodo}'. Debe realizar el Cierre de Gestión antes de aperturar una nueva.`);
-        }
-
-        // 3. Crear la nueva gestión (por defecto estado es 'Activa')
-        const [resGestion] = await connection.query(
-            "INSERT INTO gestion (periodo, estado) VALUES (?, 'Activa')",
-            [periodo]
-        );
-        const newIdGestion = resGestion.insertId;
 
         // 4. Obtener materias y aulas
         const [materias] = await connection.query('SELECT id_materia, sigla, nombre FROM materia');
@@ -127,6 +124,13 @@ export const iniciarGestionConParalelos = async (periodo, usuarioAudit = 1) => {
             }
         }
 
+        // Asignación automática sin choque de aulas y horarios en se_cursa
+        try {
+            await connection.query('CALL sp_asignar_horarios_sin_choque(?)', [newIdGestion]);
+        } catch (eSP) {
+            console.warn('[SP WARN] No se pudo ejecutar sp_asignar_horarios_sin_choque:', eSP.message);
+        }
+
         await connection.commit();
         return {
             id_gestion: newIdGestion,
@@ -141,32 +145,50 @@ export const iniciarGestionConParalelos = async (periodo, usuarioAudit = 1) => {
     }
 };
 
-// Función de autorreparación: genera paralelos para la gestión activa actual si fue iniciada sin paralelos
+// Función de autorreparación: asegura la llave primaria correcta y genera paralelos para la gestión activa actual
 export const repararParalelosGestionActiva = async () => {
     try {
+        // 1. Modificar la Llave Primaria de paralelo para incluir id_gestion (evita ER_DUP_ENTRY '1-1')
+        try {
+            await pool.query('ALTER TABLE paralelo DROP PRIMARY KEY, ADD PRIMARY KEY (id_materia, id_paralelo, id_gestion)');
+        } catch (ePK) {
+            /* ignora si la llave primaria ya incluye id_gestion */
+        }
+
+        // 2. Asegurar que id_docente permita NULL
         try {
             await pool.query('ALTER TABLE paralelo MODIFY COLUMN id_docente INT(11) NULL DEFAULT NULL');
-        } catch (e) {}
+        } catch (eNull) {}
 
-        const [gestionesActivas] = await pool.query(
-            "SELECT id_gestion, periodo FROM gestion WHERE estado = 'Activa'"
+        // 3. Consolidar que solo la última gestión permanezca como 'Activa'
+        try {
+            await pool.query("UPDATE gestion SET estado = 'Cerrada' WHERE estado = 'Activa' AND id_gestion NOT IN (SELECT max_id FROM (SELECT MAX(id_gestion) AS max_id FROM gestion WHERE estado = 'Activa') AS t)");
+        } catch (eClean) {}
+
+        let [gestionesActivas] = await pool.query(
+            "SELECT id_gestion, periodo FROM gestion WHERE estado = 'Activa' ORDER BY id_gestion DESC"
         );
+
         if (gestionesActivas.length === 0) return { reparados: 0 };
 
         const idGestionActiva = gestionesActivas[0].id_gestion;
+
+        // 3. Obtener materias que YA tienen un paralelo en la gestión activa
         const [paralelosExistentes] = await pool.query(
             'SELECT id_materia FROM paralelo WHERE id_gestion = ?',
             [idGestionActiva]
         );
 
-        const idsMateriasConParalelo = new Set(paralelosExistentes.map((p) => p.id_materia));
+        const idsMateriasConParalelo = new Set(paralelosExistentes.map((p) => Number(p.id_materia)));
         const [materias] = await pool.query('SELECT id_materia, sigla FROM materia');
         const [aulas] = await pool.query('SELECT id_aula, capacidad FROM aula ORDER BY capacidad DESC');
 
         let agregados = 0;
         for (let i = 0; i < materias.length; i++) {
             const m = materias[i];
-            if (!idsMateriasConParalelo.has(m.id_materia)) {
+            const idMat = Number(m.id_materia);
+
+            if (!idsMateriasConParalelo.has(idMat)) {
                 const aula = aulas.length > 0 ? aulas[i % aulas.length] : { id_aula: 1, capacidad: 40 };
                 const cupoMaximo = Math.min(40, aula.capacidad || 40);
 
@@ -174,7 +196,7 @@ export const repararParalelosGestionActiva = async () => {
                     await pool.query(
                         `INSERT INTO paralelo (id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion)
                          VALUES (?, 1, 'A', ?, 0, NULL, ?)`,
-                        [m.id_materia, cupoMaximo, idGestionActiva]
+                        [idMat, cupoMaximo, idGestionActiva]
                     );
                     agregados++;
                 } catch (err) {
@@ -182,15 +204,18 @@ export const repararParalelosGestionActiva = async () => {
                         await pool.query(
                             `INSERT INTO paralelo (id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion)
                              VALUES (?, 1, 'A', ?, 0, 0, ?)`,
-                            [m.id_materia, cupoMaximo, idGestionActiva]
+                            [idMat, cupoMaximo, idGestionActiva]
                         );
                         agregados++;
-                    } catch (e2) {}
+                    } catch (e2) {
+                        console.warn(`[REPAIR WARN] No se pudo crear paralelo para ${m.sigla}:`, e2.message);
+                    }
                 }
             }
         }
+
         if (agregados > 0) {
-            console.log(`[AUTO-REPAIR] Se generaron ${agregados} paralelos faltantes para la gestión activa (${gestionesActivas[0].periodo}).`);
+            console.log(`[AUTO-REPAIR] ¡Se aperturaron ${agregados} paralelos faltantes para la gestión activa (${gestionesActivas[0].periodo})!`);
         }
         return { reparados: agregados };
     } catch (e) {

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { useToast } from "../../context/ToastContext";
-import { SectionHeader, Badge, EmptyState } from "../../components/Common/Common";
+import { SectionHeader, EmptyState } from "../../components/Common/Common";
 import { generarReporteCierreGestion } from "../../utils/pdfReports";
 import { NOTA_APROBACION } from "../../data/mockData";
 
@@ -12,24 +12,24 @@ export default function GestionClosePage() {
   const { showSuccess, showError } = useToast();
 
   const esDirector = session?.rolActivo === "DIRECTOR";
-  const esAdmin = session?.rolActivo === "ADMINISTRADOR";
+  const esAdmin = session?.rolActivo === "ADMINISTRADOR" || session?.rolActivo === "ADMIN";
   const tienePermiso = esDirector || esAdmin;
 
   const carrera = data.getCarrera(data.idCarreraActiva);
   const gestionActiva = data.getGestionActiva();
 
-  // Estados del Formulario de Apertura de Gestión
+  // Formulario de Apertura de Gestión
   const [tipoPeriodo, setTipoPeriodo] = useState("II");
   const [anioPeriodo, setAnioPeriodo] = useState(2026);
   const [ejecutandoInicio, setEjecutandoInicio] = useState(false);
 
-  // Estados de Cierre de Gestión
+  // Cierre de Gestión
   const [confirmando, setConfirmando] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [ejecutandoCierre, setEjecutandoCierre] = useState(false);
 
-  // Cargar previsualización de cierre desde sp_preview_cierre_gestion al montar
+  // Cargar previsualización de cierre al estar activa la gestión
   useEffect(() => {
     if (!gestionActiva || !tienePermiso || gestionActiva.estado === "Cerrada") return;
     let cancelado = false;
@@ -57,7 +57,7 @@ export default function GestionClosePage() {
   const aprobados = resumen.aprobados || previsualizacion.filter((p) => p.estado_proyectado === "Aprobado").length;
   const reprobados = resumen.reprobados || previsualizacion.filter((p) => p.estado_proyectado === "Reprobado").length;
 
-  // Validación de Fecha del Sistema en tiempo real
+  // Validación cronológica en tiempo real
   const periodoTarget = `${tipoPeriodo}/${anioPeriodo}`;
   const hoy = new Date();
   const mesActual = hoy.getMonth() + 1; // 1=Enero, 2=Febrero, 7=Julio, 8=Agosto
@@ -69,56 +69,53 @@ export default function GestionClosePage() {
   ];
 
   const validacionApertura = useMemo(() => {
-    // 1. Hay gestión activa sin cerrar
     if (gestionActiva && gestionActiva.estado === "Activa") {
       return {
         valido: false,
-        motivo: `Existe la gestión '${gestionActiva.periodo}' actualmente activa. Debe ejecutar el Cierre de Gestión antes de aperturar una nueva.`,
+        motivo: `Existe la gestión '${gestionActiva.periodo}' actualmente activa. Debe ejecutar el Cierre de Gestión antes de aperturar un nuevo periodo lectivo.`,
       };
     }
 
-    // 2. Ya existe la gestión con el mismo código de periodo
-    const yaExiste = data.gestiones.some((g) => g.periodo === periodoTarget);
-    if (yaExiste) {
+    const yaExisteActiva = (data.gestiones || []).some((g) => g.periodo === periodoTarget && g.estado === "Activa");
+    if (yaExisteActiva) {
       return {
         valido: false,
-        motivo: `La gestión '${periodoTarget}' ya ha sido registrada anteriormente en la carrera ${carrera.nombre}.`,
+        motivo: `La gestión '${periodoTarget}' ya se encuentra actualmente activa en el sistema.`,
       };
     }
 
-    // 3. Validación Cronológica según la fecha del sistema
     if (tipoPeriodo === "I" && mesActual < 2 && anioPeriodo <= anioActual) {
       return {
         valido: false,
-        motivo: `El primer semestre (I/${anioPeriodo}) solo puede aperturarse a partir de FEBRERO (Mes actual: ${mesesNombres[mesActual]}).`,
+        motivo: `El primer semestre (I/${anioPeriodo}) solo puede aperturarse a partir de Febrero. (Mes actual: ${mesesNombres[mesActual]}).`,
       };
     }
     if (tipoPeriodo === "II" && mesActual < 8 && anioPeriodo <= anioActual) {
       return {
         valido: false,
-        motivo: `El segundo semestre (II/${anioPeriodo}) solo puede aperturarse a partir de AGOSTO (Mes actual: ${mesesNombres[mesActual]}).`,
+        motivo: `El segundo semestre (II/${anioPeriodo}) solo puede aperturarse a partir de Agosto. (Mes actual: ${mesesNombres[mesActual]}).`,
       };
     }
     if (tipoPeriodo === "Verano" && mesActual !== 1 && anioPeriodo <= anioActual) {
       return {
         valido: false,
-        motivo: `La temporada de Verano (${periodoTarget}) solo se puede aperturar en ENERO (Mes actual: ${mesesNombres[mesActual]}).`,
+        motivo: `La temporada de Verano (${periodoTarget}) solo se puede aperturar en Enero. (Mes actual: ${mesesNombres[mesActual]}).`,
       };
     }
     if (tipoPeriodo === "Invierno" && mesActual !== 7 && anioPeriodo <= anioActual) {
       return {
         valido: false,
-        motivo: `La temporada de Invierno (${periodoTarget}) solo se puede aperturar en JULIO (Mes actual: ${mesesNombres[mesActual]}).`,
+        motivo: `La temporada de Invierno (${periodoTarget}) solo se puede aperturar en Julio. (Mes actual: ${mesesNombres[mesActual]}).`,
       };
     }
 
     return {
       valido: true,
-      motivo: `Cumple los requisitos cronológicos y la oferta de paralelos (Paralelo A por materia) está lista para ser creada automáticamente.`,
+      motivo: `Requisitos validados correctamente. Se aperturará la gestión '${periodoTarget}' y se generarán automáticamente los paralelos A en todas las materias.`,
     };
-  }, [gestionActiva, periodoTarget, tipoPeriodo, anioPeriodo, mesActual, anioActual, data.gestiones, carrera.nombre]);
+  }, [gestionActiva, periodoTarget, tipoPeriodo, anioPeriodo, mesActual, anioActual, data.gestiones]);
 
-  // Ejecutar Apertura de Gestión y Generación Automática de Paralelos
+  // Ejecutar Apertura de Gestión
   const handleIniciarGestion = async () => {
     if (!validacionApertura.valido) {
       showError(validacionApertura.motivo);
@@ -128,20 +125,16 @@ export default function GestionClosePage() {
     setEjecutandoInicio(true);
     try {
       const res = await data.iniciarGestion(periodoTarget);
-      showSuccess(res.message || `¡Gestión ${periodoTarget} iniciada con éxito! Se aperturó automáticamente 1 paralelo por materia.`);
+      showSuccess(res.message || `¡Gestión ${periodoTarget} aperturada exitosamente!`);
     } catch (err) {
-      showError(err?.response?.data?.error || err.message || "Error al iniciar la gestión.");
+      showError(err?.response?.data?.error || err.message || "Error al aperturar la gestión.");
     } finally {
       setEjecutandoInicio(false);
     }
   };
 
-  // Ejecutar Cierre Definitivo de Gestión
+  // Ejecutar Cierre Definitivo
   const confirmarCierre = async () => {
-    if (!tienePermiso) {
-      showError("Acceso denegado: Acción reservada exclusivamente para Dirección de Carrera.");
-      return;
-    }
     setEjecutandoCierre(true);
     try {
       await data.cerrarGestion(gestionActiva.id_gestion);
@@ -173,9 +166,9 @@ export default function GestionClosePage() {
     return (
       <div>
         <SectionHeader title="Acceso Restringido — Gestión Académica" />
-        <div className="page-card" style={{ background: "#fdeaea", color: "#b3271f", border: "1px solid #f3c4c1" }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>
-            ⛔ La Apertura y Cierre de Gestión Académica es potestad exclusiva del Director de Carrera o Administrador del sistema.
+        <div className="page-card" style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5" }}>
+          <p style={{ margin: 0, fontWeight: 700 }}>
+            ⛔ La Apertura y Cierre de Gestión Académica es potestad exclusiva de la Dirección de Carrera o Administración del Sistema.
           </p>
         </div>
       </div>
@@ -186,79 +179,95 @@ export default function GestionClosePage() {
     <div>
       <SectionHeader
         title="Apertura y Cierre de Gestión Académica"
-        subtitle={`Dirección y Coordinación Académica — Carrera: ${carrera.nombre}`}
+        subtitle={`Panel de Control Académico — Carrera: ${carrera.nombre}`}
         actions={
-          <div style={{ display: "flex", gap: 8 }}>
-            {gestionActiva && (
-              <button className="link-button" onClick={exportar} disabled={previsualizacion.length === 0}>
-                ⬇ Exportar Acta Cierre (PDF)
-              </button>
-            )}
-          </div>
+          gestionActiva && (
+            <button
+              className="button secondary"
+              onClick={exportar}
+              disabled={previsualizacion.length === 0}
+              style={{ fontWeight: 600 }}
+            >
+              📄 Exportar Acta Oficial (PDF)
+            </button>
+          )
         }
       />
 
-      {/* Banner de Estado de la Gestión Actual */}
+      {/* BANNER PRINCIPAL: Estado del Periodo Lectivo Activo */}
       <div
         className="page-card"
         style={{
           marginBottom: 20,
           background: gestionActiva?.estado === "Activa"
-            ? "linear-gradient(135deg, #0b2239 0%, #154577 100%)"
-            : "linear-gradient(135deg, #2d1810 0%, #632617 100%)",
-          color: "#fff",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            ? "linear-gradient(135deg, #0b223d, #1d4ed8)"
+            : "linear-gradient(135deg, #334155, #0f172a)",
+          color: "#ffffff",
+          padding: 24,
+          boxShadow: "0 10px 25px rgba(11, 34, 61, 0.25)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <span style={{ fontSize: "0.8rem", textTransform: "uppercase", tracking: 1, opacity: 0.85, fontWeight: 700 }}>
-              Estado Actual del Periodo Lectivo
+            <span style={{ fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "#93c5fd", fontWeight: 800 }}>
+              ESTADO DEL PERIODO LECTIVO ACTUAL
             </span>
-            <h2 style={{ margin: "4px 0 2px", fontSize: "1.5rem", fontWeight: 800 }}>
+            <h2 style={{ margin: "4px 0 6px", fontSize: "1.6rem", fontWeight: 800, color: "#ffffff" }}>
               {gestionActiva ? `Gestión Académica ${gestionActiva.periodo}` : "Sin Gestión Activa en Curso"}
             </h2>
-            <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.9 }}>
+            <p style={{ margin: 0, fontSize: "0.9rem", color: "#e2e8f0", maxWidth: 620 }}>
               {gestionActiva?.estado === "Activa"
-                ? "Las inscripciones, calificaciones y registro de ponderaciones se encuentran abiertos."
-                : "No existe una gestión activa actualmente. Habilite un nuevo periodo lectivo a continuación."}
+                ? "El periodo lectivo se encuentra habilitado para auto-inscripciones, registro de materias y carga de ponderaciones por los docentes."
+                : "No existe una gestión activa actualmente. Seleccione el nuevo periodo lectivo a continuación para realizar la apertura."}
             </p>
           </div>
+
           <div>
-            <Badge style={{ fontSize: "0.9rem", padding: "6px 14px", background: gestionActiva?.estado === "Activa" ? "#2ecc71" : "#e74c3c" }}>
-              {gestionActiva?.estado || "Sin gestión"}
-            </Badge>
+            <span
+              style={{
+                background: gestionActiva?.estado === "Activa" ? "#10b981" : "#ef4444",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: "0.95rem",
+                padding: "8px 18px",
+                borderRadius: 30,
+                display: "inline-block",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
+              }}
+            >
+              {gestionActiva?.estado === "Activa" ? "● PERIODO ACTIVO" : "● GESTIÓN CERRADA"}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* SECCIÓN 1: APERTURA Y HABILITACIÓN DE NUEVA GESTIÓN */}
-      <div className="page-card" style={{ marginBottom: 24, borderLeft: "4px solid #1a5fb4" }}>
+      {/* BLOQUE 1: APERTURA DE NUEVA GESTIÓN */}
+      <div className="page-card" style={{ marginBottom: 24, borderTop: "4px solid #1d4ed8" }}>
         <SectionHeader
-          title="🚀 Apertura de Nueva Gestión y Habilitación de Paralelos"
-          subtitle="Permite aperturar una nueva gestión y generar automáticamente un Paralelo A para cada asignatura respetando el cupo de aula"
+          title="🚀 Aperturar Nuevo Periodo Lectivo"
+          subtitle="Aperture una nueva gestión académica con creación automática del Paralelo A para todas las materias del pensum"
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginTop: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginTop: 14 }}>
           <div>
-            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "#3a4c66", display: "block", marginBottom: 6 }}>
-              Tipo de Periodo Lectivo:
+            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
+              Tipo de Periodo Académico:
             </label>
             <select
               value={tipoPeriodo}
               onChange={(e) => setTipoPeriodo(e.target.value)}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: "0.95rem" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: "0.92rem", fontWeight: 600 }}
             >
               <option value="I">I — Primer Semestre (Min. Febrero)</option>
               <option value="II">II — Segundo Semestre (Min. Agosto)</option>
-              <option value="Verano">Verano — Temporada de Enero</option>
-              <option value="Invierno">Invierno — Temporada de Julio</option>
+              <option value="Verano">Verano — Temporada Enero</option>
+              <option value="Invierno">Invierno — Temporada Julio</option>
             </select>
           </div>
 
           <div>
-            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "#3a4c66", display: "block", marginBottom: 6 }}>
-              Año Académico:
+            <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
+              Año Lectivo:
             </label>
             <input
               type="number"
@@ -266,106 +275,135 @@ export default function GestionClosePage() {
               onChange={(e) => setAnioPeriodo(Number(e.target.value))}
               min={2026}
               max={2035}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: "0.95rem" }}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: "0.92rem", fontWeight: 600 }}
             />
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-end" }}>
             <button
-              className="primary-button"
+              className="button primary"
               onClick={handleIniciarGestion}
               disabled={!validacionApertura.valido || ejecutandoInicio}
-              style={{ width: "100%", height: 42, fontSize: "0.92rem", fontWeight: 700, background: validacionApertura.valido ? "#1a5fb4" : "#94a3b8" }}
+              style={{
+                width: "100%",
+                height: 42,
+                fontSize: "0.95rem",
+                fontWeight: 700,
+                background: validacionApertura.valido ? "#1d4ed8" : "#94a3b8",
+                borderColor: validacionApertura.valido ? "#1d4ed8" : "#94a3b8"
+              }}
             >
-              {ejecutandoInicio ? "Iniciando y Creando Paralelos..." : `🚀 Iniciar Gestión ${periodoTarget}`}
+              {ejecutandoInicio ? "Aperturando y Generando Paralelos..." : `🚀 Iniciar Gestión ${periodoTarget}`}
             </button>
           </div>
         </div>
 
-        {/* Panel Informativo de Validación Cronológica en Tiempo Real */}
+        {/* Notificación Contextual de Validación */}
         <div
           style={{
             marginTop: 16,
-            padding: 14,
-            borderRadius: 8,
+            padding: "14px 18px",
+            borderRadius: 10,
             background: validacionApertura.valido ? "#f0fdf4" : "#fef2f2",
-            border: `1px solid ${validacionApertura.valido ? "#bbf7d0" : "#fecaca"}`,
+            border: `1px solid ${validacionApertura.valido ? "#86efac" : "#fca5a5"}`,
             color: validacionApertura.valido ? "#166534" : "#991b1b",
           }}
         >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontSize: "1.2rem" }}>{validacionApertura.valido ? "✅" : "⚠️"}</span>
-            <div>
-              <strong style={{ fontSize: "0.9rem", display: "block" }}>
-                {validacionApertura.valido ? "Requisitos de Apertura Cumplidos" : "Restricción de Apertura de Gestión"}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <span style={{ fontSize: "1.3rem" }}>{validacionApertura.valido ? "✅" : "⚠️"}</span>
+            <div style={{ flex: 1 }}>
+              <strong style={{ fontSize: "0.92rem", display: "block", marginBottom: 2 }}>
+                {validacionApertura.valido ? "Apertura Lista para Ejecutarse" : "Restricción de Apertura de Gestión"}
               </strong>
-              <span style={{ fontSize: "0.85rem" }}>{validacionApertura.motivo}</span>
-              <div style={{ fontSize: "0.78rem", marginTop: 4, opacity: 0.85 }}>
-                📅 Fecha de verificación del sistema: <strong>{mesesNombres[mesActual]} {anioActual}</strong>.
-                Regla: <em>Semestre I (Febrero+), Semestre II (Agosto+), Verano (Enero), Invierno (Julio).</em>
+              <span style={{ fontSize: "0.88rem", lineHeight: 1.4 }}>{validacionApertura.motivo}</span>
+              <div style={{ fontSize: "0.8rem", marginTop: 6, opacity: 0.85, borderTop: "1px dashed rgba(0,0,0,0.1)", paddingTop: 4 }}>
+                📅 Verificación de calendario del sistema: <strong>{mesesNombres[mesActual]} {anioActual}</strong>.
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* SECCIÓN 2: CIERRE DE GESTIÓN ACTIVA */}
+      {/* BLOQUE 2: CIERRE DE GESTIÓN ACTIVA */}
       {gestionActiva && gestionActiva.estado === "Activa" && (
-        <div className="page-card" style={{ borderLeft: "4px solid #d97706" }}>
+        <div className="page-card" style={{ borderTop: "4px solid #dc2626" }}>
           <SectionHeader
-            title={`🔒 Cierre de Gestión Académica Activa — ${gestionActiva.periodo}`}
-            subtitle="Concluye la gestión, calcula notas finales ponderadas congelando actas y actualiza los historiales de los estudiantes"
+            title={`🔒 Cierre Definitivo de Gestión — ${gestionActiva.periodo}`}
+            subtitle="Concluya el periodo lectivo, congele actas de notas y actualice automáticamente el expediente de todos los estudiantes"
             actions={
               <button
-                className="primary-button"
+                className="button danger"
                 onClick={() => setConfirmando(true)}
                 disabled={ejecutandoCierre}
-                style={{ background: "#dc2626" }}
+                style={{ fontWeight: 700 }}
               >
                 🔒 Ejecutar Cierre Definitivo
               </button>
             }
           />
 
-          <div style={{ marginBottom: 16, fontSize: "0.88rem", color: "#475569" }}>
-            Al ejecutar el cierre de la gestión <strong>{gestionActiva.periodo}</strong>, el procedimiento transaccional de MySQL
-            (<code>sp_cerrar_gestion</code>) asentará automáticamente el estado <Badge>Aprobado</Badge> (nota ≥ {NOTA_APROBACION}) o
-            {" "}<Badge>Reprobado</Badge> para todos los estudiantes inscritos.
+          {/* Tarjetas de Resumen Previo */}
+          <div className="stats-grid" style={{ marginTop: 16, marginBottom: 20 }}>
+            <div className="stat-card tone-blue">
+              <div className="stat-icon">👥</div>
+              <div>
+                <p className="stat-value">{previsualizacion.length}</p>
+                <p className="stat-label">Inscripciones Evaluadas</p>
+              </div>
+            </div>
+
+            <div className="stat-card tone-green">
+              <div className="stat-icon">🎓</div>
+              <div>
+                <p className="stat-value">{aprobados}</p>
+                <p className="stat-label">Estudiantes Promovidos (≥ {NOTA_APROBACION} pts)</p>
+              </div>
+            </div>
+
+            <div className="stat-card tone-red">
+              <div className="stat-icon">⚠️</div>
+              <div>
+                <p className="stat-value">{reprobados}</p>
+                <p className="stat-label">Estudiantes Reprobados</p>
+              </div>
+            </div>
           </div>
 
-          <SectionHeader title="Previsualización del Acta Final de Notas (sp_preview_cierre_gestion)" />
+          <SectionHeader title="📋 Previsualización del Acta Consolidada de Notas" />
 
           {loadingPreview ? (
-            <p className="activity-meta">Cargando previsualización del acta desde la base de datos...</p>
+            <p className="activity-meta">Cargando borrador consolidado desde la base de datos...</p>
           ) : previsualizacion.length === 0 ? (
-            <EmptyState text="No existen estudiantes inscritos en esta gestión activa." />
+            <EmptyState text="No existen estudiantes matriculados con notas registradas en esta gestión activa." />
           ) : (
-            <table className="table" style={{ marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>Estudiante</th>
-                  <th>RU</th>
-                  <th>Asignatura</th>
-                  <th>Nota Proyectada</th>
-                  <th>Estado Final</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previsualizacion.map((p, idx) => (
-                  <tr key={idx}>
-                    <td><strong>{p.estudiante}</strong></td>
-                    <td>{p.ru}</td>
-                    <td>{p.sigla_materia} — {p.materia}</td>
-                    <td><strong>{Math.round((p.nota_final_proyectada || 0) * 100) / 100} pts</strong></td>
-                    <td>
-                      <span className={`badge ${p.estado_proyectado === "Aprobado" ? "materia-green" : "materia-red"}`}>
-                        {p.estado_proyectado}
-                      </span>
-                    </td>
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Estudiante</th>
+                    <th>RU</th>
+                    <th>Asignatura</th>
+                    <th>Nota Final Proyectada</th>
+                    <th>Estado Proyectado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {previsualizacion.map((p, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{p.estudiante}</strong></td>
+                      <td>{p.ru}</td>
+                      <td><strong>{p.sigla_materia}</strong> — {p.materia}</td>
+                      <td><strong>{Math.round((p.nota_final_proyectada || 0) * 100) / 100} pts</strong></td>
+                      <td>
+                        <span className={`badge ${p.estado_proyectado === "Aprobado" ? "badge-success" : "badge-danger"}`}>
+                          {p.estado_proyectado}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
@@ -373,20 +411,22 @@ export default function GestionClosePage() {
       {/* Modal de Confirmación de Cierre */}
       {confirmando && (
         <div className="modal-backdrop" onClick={() => setConfirmando(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Confirmar Cierre Definitivo de Gestión</h3>
+              <h3 style={{ color: "#dc2626" }}>⚠️ Confirmar Cierre Definitivo de Gestión</h3>
             </div>
-            <p>
-              ¿Está completamente seguro de ejecutar el cierre de la gestión <strong>{gestionActiva?.periodo}</strong>?
-              Esta acción es irreversible y asentará las notas finales calculadas en el historial académico de todos los estudiantes.
+            <p style={{ fontSize: "0.92rem", color: "#334155", lineHeight: 1.5 }}>
+              ¿Está completamente seguro de ejecutar el cierre irreversible de la gestión <strong>{gestionActiva?.periodo}</strong>?
             </p>
+            <div style={{ padding: 12, borderRadius: 8, background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b", fontSize: "0.85rem", marginBottom: 16 }}>
+              Al confirmar, las notas proyectadas se congelarán en el expediente académico de todos los estudiantes y el periodo lectivo cambiará a estado <strong>Cerrado</strong>.
+            </div>
             <div className="modal-actions">
-              <button className="link-button" onClick={() => setConfirmando(false)} disabled={ejecutandoCierre}>
+              <button className="button secondary" onClick={() => setConfirmando(false)} disabled={ejecutandoCierre}>
                 Cancelar
               </button>
-              <button className="primary-button" onClick={confirmarCierre} disabled={ejecutandoCierre} style={{ background: "#dc2626" }}>
-                {ejecutandoCierre ? "Cerrando gestión en MySQL..." : "Sí, Ejecutar Cierre Definitivo"}
+              <button className="button danger" onClick={confirmarCierre} disabled={ejecutandoCierre} style={{ fontWeight: 700 }}>
+                {ejecutandoCierre ? "Cerrando en Base de Datos..." : "Sí, Ejecutar Cierre Definitivo"}
               </button>
             </div>
           </div>

@@ -5,19 +5,33 @@ export const apiClient = axios.create({
   timeout: 10000,
 });
 
-// Adjunta el token JWT guardado en sessionStorage a cada request
-apiClient.interceptors.request.use((config) => {
-  const raw = sessionStorage.getItem("sau_session");
-  if (raw) {
-    try {
-      const { token } = JSON.parse(raw);
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    } catch {
-      /* noop */
+export const extraerMensajeError = (error) => {
+  if (!error) return "Ocurrió un error inesperado.";
+  if (typeof error === "string") return error;
+  if (error.response?.data) {
+    const data = error.response.data;
+    if (typeof data === "string") return data;
+    if (data.mensaje) {
+      return Array.isArray(data.mensaje) ? data.mensaje.map(m => m.msg || m).join(', ') : data.mensaje;
     }
+    if (data.error) return data.error;
+    if (data.detalle) return data.detalle;
   }
-  return config;
-});
+  if (error.message && !error.message.includes("status code") && !error.message.includes("Network Error")) {
+    return error.message;
+  }
+  return "No se pudo completar la solicitud. Verifique los datos o intente nuevamente.";
+};
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const mensajeLegible = extraerMensajeError(error);
+    const errLimpio = new Error(mensajeLegible);
+    errLimpio.response = error.response;
+    return Promise.reject(errLimpio);
+  }
+);
 
 export const authService = {
   login: (payload) => apiClient.post("/login", payload),
@@ -50,8 +64,8 @@ export const catalogService = {
 export const paraleloService = {
   sinDocente: (id_gestion) => apiClient.get("/paralelos/sin-docente", { params: { id_gestion } }),
   porDocente: (id_docente, id_gestion) => apiClient.get(`/paralelos/docente/${id_docente}`, { params: { id_gestion } }),
-  asignarDocente: (id_materia, id_paralelo, id_docente) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/asignar-docente`, { id_docente }),
-  desasignarDocente: (id_materia, id_paralelo) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/desasignar-docente`),
+  asignarDocente: (id_materia, id_paralelo, id_docente, id_gestion) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/asignar-docente`, { id_docente, id_gestion }),
+  desasignarDocente: (id_materia, id_paralelo, id_gestion) => apiClient.put(`/paralelos/${id_materia}/${id_paralelo}/desasignar-docente`, { id_gestion }),
 };
 
 export const enrollmentService = {

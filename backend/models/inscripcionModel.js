@@ -11,7 +11,7 @@ export const realizarInscripcion = async (inscripcion) => {
 
 export const obtenerInscripciones = async () => {
     const [resultado] = await pool.query(
-        `SELECT
+        `SELECT DISTINCT
             i.id_inscripcion,
             d.id_detalle,
             i.id_estudiante,
@@ -26,10 +26,10 @@ export const obtenerInscripciones = async () => {
             COALESCE(d.estado, 'Inscrito') AS estado,
             COALESCE(d.nota_final, 0) AS nota_final
         FROM inscripcion i
-        LEFT JOIN detalle_inscripcion d ON i.id_inscripcion = d.id_inscripcion
+        JOIN detalle_inscripcion d ON i.id_inscripcion = d.id_inscripcion
         LEFT JOIN persona p ON i.id_estudiante = p.id_persona
         LEFT JOIN materia m ON d.id_materia = m.id_materia
-        LEFT JOIN paralelo pa ON d.id_materia = pa.id_materia AND d.id_paralelo = pa.id_paralelo
+        LEFT JOIN paralelo pa ON d.id_materia = pa.id_materia AND d.id_paralelo = pa.id_paralelo AND i.id_gestion = pa.id_gestion
         LEFT JOIN gestion g ON i.id_gestion = g.id_gestion`
     );
 

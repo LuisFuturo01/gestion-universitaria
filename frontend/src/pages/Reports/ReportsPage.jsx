@@ -102,17 +102,21 @@ export default function ReportsPage() {
               title={`Rendimiento Académico por Asignatura (${carrera.nombre})`}
               actions={<button className="link-button" onClick={() => generarReporteRendimiento({ filas: rendimiento })}>⬇ Exportar PDF Rendimiento</button>}
             />
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={rendimiento}>
-                <XAxis dataKey="materia" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="aprobados" fill="#1f9d55" name="Aprobados" />
-                <Bar dataKey="reprobados" fill="#e64545" name="Reprobados" />
-                <Bar dataKey="cursando" fill="#f4b740" name="Cursando" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ width: "100%", overflowX: "auto", overflowY: "hidden", paddingBottom: 10 }}>
+              <div style={{ minWidth: Math.max(800, rendimiento.length * 45), height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={rendimiento} margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
+                    <XAxis dataKey="materia" tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="aprobados" fill="#1f9d55" name="Aprobados" />
+                    <Bar dataKey="reprobados" fill="#e64545" name="Reprobados" />
+                    <Bar dataKey="cursando" fill="#f4b740" name="Cursando" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
 
           <div className="page-card" style={{ marginTop: 20 }}>
