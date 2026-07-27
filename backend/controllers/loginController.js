@@ -78,8 +78,8 @@ export const login = async (req, res) => {
         let id_carrera = 1;
         let id_plan = 1;
         try {
-            // 1. Probar en director_carrera
-            const [dirRow] = await pool.query("SELECT id_carrera FROM director_carrera WHERE id_persona = ?", [mainUser.id_persona]);
+            // 1. Probar en director_carrera_asignacion
+            const [dirRow] = await pool.query("SELECT id_carrera FROM director_carrera_asignacion WHERE id_persona = ?", [mainUser.id_persona]);
             if (dirRow && dirRow.length > 0 && dirRow[0].id_carrera) {
                 id_carrera = dirRow[0].id_carrera;
             } else {

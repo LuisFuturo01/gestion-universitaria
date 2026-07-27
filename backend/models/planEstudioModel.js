@@ -6,8 +6,14 @@ export const crear = async (nombre, id_carrera) => {
 };
 
 export const obtenerTodos = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_planes_estudio()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_planes_estudio()');
+        if (Array.isArray(rows[0])) return rows[0];
+        if (Array.isArray(rows)) return rows;
+    } catch (e) {
+        const [rows] = await pool.query('SELECT id_plan, nombre, id_carrera FROM plan_estudio');
+        return rows;
+    }
 };
 
 export const obtenerPorId = async (id_plan) => {

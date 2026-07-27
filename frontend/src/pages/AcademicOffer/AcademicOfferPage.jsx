@@ -42,19 +42,21 @@ export default function AcademicOfferPage() {
   const esDocente = session?.rolActivo === "DOCENTE";
   const esAdminDirector = session?.rolActivo === "ADMIN" || session?.rolActivo === "DIRECTOR";
 
-  const carrera = data.getCarrera(data.idCarreraActiva);
+  const targetCarreraId = session?.id_carrera || data.idCarreraActiva || 1;
+  const carrera = data.getCarrera(targetCarreraId);
   const planesCarrera = data.getPlanesPorCarrera(carrera.id_carrera);
   const gestionActiva = data.getGestionActiva();
 
   // Estados principales
-  const [idPlan, setIdPlan] = useState(planesCarrera[0]?.id_plan || 1);
+  const userPlanId = session?.id_plan || session?.estudiante?.id_plan;
+  const [idPlan, setIdPlan] = useState(userPlanId || planesCarrera[0]?.id_plan || 1);
   const [seleccionada, setSeleccionada] = useState(null);
   const [mostrarModalTomar, setMostrarModalTomar] = useState(false);
   const [mostrarFlujo, setMostrarFlujo] = useState(false);
   const [tabDocente, setTabDocente] = useState("malla"); // "malla" | "mis_materias"
   const [idDocenteFiltroAdmin, setIdDocenteFiltroAdmin] = useState(session?.id_persona || 1);
 
-  const planActual = planesCarrera.find((p) => p.id_plan === idPlan) || planesCarrera[0];
+  const planActual = planesCarrera.find((p) => Number(p.id_plan) === Number(idPlan)) || planesCarrera[0] || (data.planes && data.planes[0]);
   const pensumCompleto = useMemo(() => (planActual ? data.getPensumPlan(planActual.id_plan) : []), [planActual, data]);
 
   // Clasificación de materias del pensum con su tipo
@@ -357,12 +359,12 @@ export default function AcademicOfferPage() {
                       </td>
                       <td>{m.cupo_actual} / {m.cupo_maximo}</td>
                       <td>
-                        <span className={`badge ${m.estadoGestion === 'Activa' ? 'badge-success' : 'badge-secondary'}`}>
+                        <span className={`badge ${(m.estadoGestion || '').toLowerCase() === 'activa' ? 'badge-success' : 'badge-secondary'}`}>
                           {m.estadoGestion}
                         </span>
                       </td>
                       <td>
-                        {m.estadoGestion === 'Activa' && (
+                        {(m.estadoGestion || '').toLowerCase() === 'activa' && (
                           <button
                             className="button danger sm"
                             onClick={() => handleDesasignarMateria(m.id_materia, m.id_paralelo)}

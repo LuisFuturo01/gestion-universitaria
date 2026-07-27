@@ -11,17 +11,23 @@ export const crear = async (id_materia, id_paralelo, nombre, cupo_maximo, id_doc
 
 export const obtenerTodos = async () => {
     try {
-        let [rows] = await pool.query(
+        const [rows] = await pool.query(
             'SELECT id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion FROM paralelo'
         );
 
-        if (!rows || rows.length === 0) {
-            console.log('[AUTO-REPAIR] La tabla paralelo está vacía. Generando paralelos para la gestión activa...');
-            await repararParalelosGestionActiva();
-            const [rowsReparados] = await pool.query(
-                'SELECT id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion FROM paralelo'
-            );
-            return rowsReparados;
+        // Si no hay paralelos o la gestión activa no tiene paralelos, auto-reparar
+        const [gActiva] = await pool.query("SELECT id_gestion FROM gestion WHERE LOWER(estado) = 'activa' ORDER BY id_gestion DESC LIMIT 1");
+        if (gActiva.length > 0) {
+            const idGA = gActiva[0].id_gestion;
+            const tieneParalelos = rows.some(r => Number(r.id_gestion) === Number(idGA));
+            if (!tieneParalelos) {
+                console.log('[AUTO-REPAIR] La gestión activa no tiene paralelos. Generando...');
+                await repararParalelosGestionActiva();
+                const [rowsReparados] = await pool.query(
+                    'SELECT id_materia, id_paralelo, nombre, cupo_maximo, cupo_actual, id_docente, id_gestion FROM paralelo'
+                );
+                return rowsReparados;
+            }
         }
 
         return rows;

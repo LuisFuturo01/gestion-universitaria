@@ -29,9 +29,14 @@ export default function GestionClosePage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [ejecutandoCierre, setEjecutandoCierre] = useState(false);
 
+  // Forzar recarga de datos al montar la página para asegurar gestiones actualizadas
+  useEffect(() => {
+    data.reloadFromBackend();
+  }, []);
+
   // Cargar previsualización de cierre al estar activa la gestión
   useEffect(() => {
-    if (!gestionActiva || !tienePermiso || gestionActiva.estado === "Cerrada") return;
+    if (!gestionActiva || !tienePermiso || (gestionActiva.estado || '').toLowerCase() === "cerrada") return;
     let cancelado = false;
 
     const cargarPreview = async () => {
@@ -69,14 +74,17 @@ export default function GestionClosePage() {
   ];
 
   const validacionApertura = useMemo(() => {
-    if (gestionActiva && gestionActiva.estado === "Activa") {
+    const estadoActiva = (gestionActiva?.estado || '').toLowerCase() === 'activa';
+    if (gestionActiva && estadoActiva) {
       return {
         valido: false,
         motivo: `Existe la gestión '${gestionActiva.periodo}' actualmente activa. Debe ejecutar el Cierre de Gestión antes de aperturar un nuevo periodo lectivo.`,
       };
     }
 
-    const yaExisteActiva = (data.gestiones || []).some((g) => g.periodo === periodoTarget && g.estado === "Activa");
+    const yaExisteActiva = (data.gestiones || []).some(
+      (g) => g.periodo === periodoTarget && (g.estado || '').toLowerCase() === 'activa'
+    );
     if (yaExisteActiva) {
       return {
         valido: false,
@@ -84,36 +92,11 @@ export default function GestionClosePage() {
       };
     }
 
-    if (tipoPeriodo === "I" && mesActual < 2 && anioPeriodo <= anioActual) {
-      return {
-        valido: false,
-        motivo: `El primer semestre (I/${anioPeriodo}) solo puede aperturarse a partir de Febrero. (Mes actual: ${mesesNombres[mesActual]}).`,
-      };
-    }
-    if (tipoPeriodo === "II" && mesActual < 8 && anioPeriodo <= anioActual) {
-      return {
-        valido: false,
-        motivo: `El segundo semestre (II/${anioPeriodo}) solo puede aperturarse a partir de Agosto. (Mes actual: ${mesesNombres[mesActual]}).`,
-      };
-    }
-    if (tipoPeriodo === "Verano" && mesActual !== 1 && anioPeriodo <= anioActual) {
-      return {
-        valido: false,
-        motivo: `La temporada de Verano (${periodoTarget}) solo se puede aperturar en Enero. (Mes actual: ${mesesNombres[mesActual]}).`,
-      };
-    }
-    if (tipoPeriodo === "Invierno" && mesActual !== 7 && anioPeriodo <= anioActual) {
-      return {
-        valido: false,
-        motivo: `La temporada de Invierno (${periodoTarget}) solo se puede aperturar en Julio. (Mes actual: ${mesesNombres[mesActual]}).`,
-      };
-    }
-
     return {
       valido: true,
       motivo: `Requisitos validados correctamente. Se aperturará la gestión '${periodoTarget}' y se generarán automáticamente los paralelos A en todas las materias.`,
     };
-  }, [gestionActiva, periodoTarget, tipoPeriodo, anioPeriodo, mesActual, anioActual, data.gestiones]);
+  }, [gestionActiva, periodoTarget, data.gestiones]);
 
   // Ejecutar Apertura de Gestión
   const handleIniciarGestion = async () => {
@@ -199,7 +182,7 @@ export default function GestionClosePage() {
         className="page-card"
         style={{
           marginBottom: 20,
-          background: gestionActiva?.estado === "Activa"
+          background: (gestionActiva?.estado || '').toLowerCase() === "activa"
             ? "linear-gradient(135deg, #0b223d, #1d4ed8)"
             : "linear-gradient(135deg, #334155, #0f172a)",
           color: "#ffffff",
@@ -216,7 +199,7 @@ export default function GestionClosePage() {
               {gestionActiva ? `Gestión Académica ${gestionActiva.periodo}` : "Sin Gestión Activa en Curso"}
             </h2>
             <p style={{ margin: 0, fontSize: "0.9rem", color: "#e2e8f0", maxWidth: 620 }}>
-              {gestionActiva?.estado === "Activa"
+              {(gestionActiva?.estado || '').toLowerCase() === "activa"
                 ? "El periodo lectivo se encuentra habilitado para auto-inscripciones, registro de materias y carga de ponderaciones por los docentes."
                 : "No existe una gestión activa actualmente. Seleccione el nuevo periodo lectivo a continuación para realizar la apertura."}
             </p>
@@ -225,7 +208,7 @@ export default function GestionClosePage() {
           <div>
             <span
               style={{
-                background: gestionActiva?.estado === "Activa" ? "#10b981" : "#ef4444",
+                background: (gestionActiva?.estado || '').toLowerCase() === "activa" ? "#10b981" : "#ef4444",
                 color: "#ffffff",
                 fontWeight: 800,
                 fontSize: "0.95rem",
@@ -235,7 +218,7 @@ export default function GestionClosePage() {
                 boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
               }}
             >
-              {gestionActiva?.estado === "Activa" ? "● PERIODO ACTIVO" : "● GESTIÓN CERRADA"}
+              {(gestionActiva?.estado || '').toLowerCase() === "activa" ? "● PERIODO ACTIVO" : "● GESTIÓN CERRADA"}
             </span>
           </div>
         </div>
@@ -325,7 +308,7 @@ export default function GestionClosePage() {
       </div>
 
       {/* BLOQUE 2: CIERRE DE GESTIÓN ACTIVA */}
-      {gestionActiva && gestionActiva.estado === "Activa" && (
+      {gestionActiva && (gestionActiva.estado || '').toLowerCase() === "activa" && (
         <div className="page-card" style={{ borderTop: "4px solid #dc2626" }}>
           <SectionHeader
             title={`🔒 Cierre Definitivo de Gestión — ${gestionActiva.periodo}`}

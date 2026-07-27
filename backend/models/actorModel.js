@@ -499,7 +499,7 @@ export const insertaDirec = async (director) => {
 
         await conexion.query(`INSERT INTO docente (id_persona, registro_docente, grado_academico) VALUES (?,?,?)`,[id_persona, registro_docente, grado_academico]);
         await conexion.query(`INSERT INTO director_carrera (id_persona) VALUES (?)`,[id_persona]);
-        await conexion.query(`INSERT INTO exige_o_dirige (id_persona, id_carrera, gestion) VALUES (?,?,?)`,[id_persona, id_carrera, gestion]);
+        await conexion.query(`INSERT INTO director_carrera_asignacion (id_persona, id_carrera, gestion) VALUES (?,?,?)`,[id_persona, id_carrera, gestion]);
 
         await conexion.commit();
         return { id_persona, id_usuario, mensaje: "Director registrado correctamente" };

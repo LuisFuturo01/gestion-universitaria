@@ -33,9 +33,9 @@ export default function HistoryPage() {
   const historial = data.getHistorialEstudiante(estudianteIdActual);
 
   const promedioGeneral = useMemo(() => {
-    const aprobadas = historial.filter((h) => h.estado === "Aprobado");
+    const aprobadas = historial.filter((h) => h.estado === "Aprobado" || Number(h.nota_final) >= 51);
     if (aprobadas.length === 0) return 0;
-    return Math.round((aprobadas.reduce((acc, h) => acc + h.nota_final, 0) / aprobadas.length) * 100) / 100;
+    return Math.round((aprobadas.reduce((acc, h) => acc + Number(h.nota_final || 0), 0) / aprobadas.length) * 100) / 100;
   }, [historial]);
 
   const exportarPDF = () => {

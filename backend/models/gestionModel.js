@@ -6,8 +6,14 @@ export const crear = async (periodo) => {
 };
 
 export const obtenerTodas = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_gestiones()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_gestiones()');
+        return rows[0];
+    } catch (e) {
+        // Fallback: consulta directa si el SP no existe o falla
+        const [rows] = await pool.query('SELECT id_gestion, periodo, estado FROM gestion ORDER BY id_gestion DESC');
+        return rows;
+    }
 };
 
 export const actualizar = async (id_gestion, periodo) => {
@@ -162,14 +168,24 @@ export const repararParalelosGestionActiva = async () => {
 
         // 3. Consolidar que solo la última gestión permanezca como 'Activa'
         try {
-            await pool.query("UPDATE gestion SET estado = 'Cerrada' WHERE estado = 'Activa' AND id_gestion NOT IN (SELECT max_id FROM (SELECT MAX(id_gestion) AS max_id FROM gestion WHERE estado = 'Activa') AS t)");
+            await pool.query("UPDATE gestion SET estado = 'Cerrada' WHERE LOWER(estado) = 'activa' AND id_gestion NOT IN (SELECT max_id FROM (SELECT MAX(id_gestion) AS max_id FROM gestion WHERE LOWER(estado) = 'activa') AS t)");
         } catch (eClean) {}
 
         let [gestionesActivas] = await pool.query(
-            "SELECT id_gestion, periodo FROM gestion WHERE estado = 'Activa' ORDER BY id_gestion DESC"
+            "SELECT id_gestion, periodo FROM gestion WHERE LOWER(estado) = 'activa' ORDER BY id_gestion DESC"
         );
 
-        if (gestionesActivas.length === 0) return { reparados: 0 };
+        if (gestionesActivas.length === 0) {
+            const [ultimaGestion] = await pool.query(
+                "SELECT id_gestion, periodo FROM gestion ORDER BY id_gestion DESC LIMIT 1"
+            );
+            if (ultimaGestion.length > 0) {
+                await pool.query("UPDATE gestion SET estado = 'Activa' WHERE id_gestion = ?", [ultimaGestion[0].id_gestion]);
+                gestionesActivas = ultimaGestion;
+            } else {
+                return { reparados: 0 };
+            }
+        }
 
         const idGestionActiva = gestionesActivas[0].id_gestion;
 

@@ -6,8 +6,14 @@ export const crear = async (sigla, nombre, carga_horaria) => {
 };
 
 export const obtenerTodas = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_materias()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_materias()');
+        if (Array.isArray(rows[0])) return rows[0];
+        if (Array.isArray(rows)) return rows;
+    } catch (e) {
+        const [rows] = await pool.query('SELECT id_materia, sigla, nombre, carga_horaria FROM materia');
+        return rows;
+    }
 };
 
 export const obtenerPorId = async (id) => {

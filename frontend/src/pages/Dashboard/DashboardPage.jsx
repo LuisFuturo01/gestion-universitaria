@@ -39,7 +39,7 @@ export default function DashboardPage() {
               <h3 style={{ margin: "6px 0 4px", color: "#0f172a" }}>
                 {gestionActiva ? gestionActiva.periodo : "Sin gestión activa"}
               </h3>
-              <Badge style={{ background: gestionActiva?.estado === "Activa" ? "#10b981" : "#ef4444", color: "#fff" }}>
+              <Badge style={{ background: (gestionActiva?.estado || '').toLowerCase() === "activa" ? "#10b981" : "#ef4444", color: "#fff" }}>
                 {gestionActiva?.estado || "Inactiva"}
               </Badge>
             </div>

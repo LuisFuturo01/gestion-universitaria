@@ -6,8 +6,14 @@ export const crear = async (nombre) => {
 };
 
 export const obtenerTodas = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_carreras()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_carreras()');
+        if (Array.isArray(rows[0])) return rows[0];
+        if (Array.isArray(rows)) return rows;
+    } catch (e) {
+        const [rows] = await pool.query('SELECT id_carrera, nombre FROM carrera');
+        return rows;
+    }
 };
 
 export const obtenerPorId = async (id_carrera) => {

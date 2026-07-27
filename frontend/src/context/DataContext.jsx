@@ -105,8 +105,13 @@ export function DataProvider({ children }) {
           creditos: m.carga_horaria || m.creditos || 5
         })));
       }
-      if (resGestiones.status === "fulfilled" && Array.isArray(resGestiones.value.data)) {
+      if (resGestiones.status === "fulfilled" && Array.isArray(resGestiones.value.data) && resGestiones.value.data.length > 0) {
         setGestiones(resGestiones.value.data);
+      } else {
+        setGestiones([
+          { id_gestion: 26, periodo: "Invierno/2026", estado: "Activa" },
+          { id_gestion: 1, periodo: "I/2026", estado: "Cerrada" }
+        ]);
       }
       if (resParalelos.status === "fulfilled" && Array.isArray(resParalelos.value.data)) {
         setParalelos(resParalelos.value.data);
@@ -242,11 +247,11 @@ export function DataProvider({ children }) {
 
   // ---------- Helpers de jerarquía Carrera -> Plan de Estudio (Menciones) -> Materias ----------
 
-  const getCarrera = (id_carrera) => carreras.find((c) => c.id_carrera === id_carrera) || carreras[0] || { id_carrera: 1, nombre: "Ingeniería de Sistemas" };
+  const getCarrera = (id_carrera) => carreras.find((c) => Number(c.id_carrera) === Number(id_carrera)) || carreras[0] || { id_carrera: 1, nombre: "Ingeniería de Sistemas" };
 
   const getPlanesPorCarrera = (id_carrera) => {
-    const arr = planes.filter((p) => p.id_carrera === id_carrera);
-    return arr.length > 0 ? arr : planes.slice(0, 2);
+    const arr = planes.filter((p) => Number(p.id_carrera) === Number(id_carrera));
+    return arr.length > 0 ? arr : planes;
   };
 
   const getPersona = (id_persona) => {
@@ -276,9 +281,12 @@ export function DataProvider({ children }) {
   };
 
   const getGestionActiva = () => {
-    const activas = (gestiones || []).filter((g) => g.estado === "Activa");
+    const activas = (gestiones || []).filter((g) => g.estado && g.estado.toLowerCase() === "activa");
     if (activas.length > 0) {
       return activas.sort((a, b) => Number(b.id_gestion) - Number(a.id_gestion))[0];
+    }
+    if ((gestiones || []).length > 0) {
+      return [...gestiones].sort((a, b) => Number(b.id_gestion) - Number(a.id_gestion))[0];
     }
     return null;
   };
@@ -312,13 +320,25 @@ export function DataProvider({ children }) {
 
   const getHistorialEstudiante = (id_estudiante) => {
     const insEst = (inscripciones || []).filter((i) => Number(i.id_estudiante) === Number(id_estudiante));
-    const idsIns = insEst.map((i) => i.id_inscripcion);
+    const idsIns = insEst.map((i) => Number(i.id_inscripcion));
     const raw = (detalle || [])
-      .filter((d) => idsIns.includes(d.id_inscripcion))
+      .filter((d) => idsIns.includes(Number(d.id_inscripcion)))
       .map((d) => {
-        const ins = insEst.find((i) => i.id_inscripcion === d.id_inscripcion);
+        const ins = insEst.find((i) => Number(i.id_inscripcion) === Number(d.id_inscripcion));
         const gestion = (gestiones || []).find((g) => Number(g.id_gestion) === Number(ins ? ins.id_gestion : 1)) || { id_gestion: 1, periodo: "I/2026" };
-        return { ...d, gestion, materia: getMateria(d.id_materia) };
+        const notaCalc = calcularNotaFinal(d.id_materia, d.id_paralelo, d.id_detalle);
+        const nota_final = (d.nota_final !== null && d.nota_final !== undefined && Number(d.nota_final) > 0)
+          ? Number(d.nota_final)
+          : notaCalc;
+
+        let estadoCalculado = d.estado || "Inscrito";
+        if (nota_final >= 51) {
+          estadoCalculado = "Aprobado";
+        } else if (nota_final > 0 && nota_final < 51 && (d.estado === "Aprobado" || d.estado === "Reprobado")) {
+          estadoCalculado = "Reprobado";
+        }
+
+        return { ...d, estado: estadoCalculado, gestion, nota_final, materia: getMateria(d.id_materia) };
       })
       .filter((d) => d.gestion && d.materia);
 
@@ -503,14 +523,20 @@ export function DataProvider({ children }) {
     const crit = (criterios || []).filter(
       (c) => Number(c.id_materia) === Number(id_materia) && Number(c.id_paralelo) === Number(id_paralelo)
     );
-    const totalSuma = crit.reduce((acc, c) => {
-      const nota = (notas || []).find(
-        (n) => Number(n.id_detalle) === Number(id_detalle) && Number(n.id_criterio) === Number(c.id_criterio)
-      );
-      const valor = nota ? Number(nota.nota_obtenida ?? nota.puntaje_obtenido ?? 0) : 0;
-      return acc + (isNaN(valor) ? 0 : valor);
-    }, 0);
-    return Math.round(totalSuma * 100) / 100;
+    let totalSuma = 0;
+    if (crit.length > 0) {
+      totalSuma = crit.reduce((acc, c) => {
+        const nota = (notas || []).find(
+          (n) => Number(n.id_detalle) === Number(id_detalle) && Number(n.id_criterio) === Number(c.id_criterio)
+        );
+        const valor = nota ? Number(nota.nota_obtenida ?? nota.puntaje_obtenido ?? 0) : 0;
+        return acc + (isNaN(valor) ? 0 : valor);
+      }, 0);
+    } else {
+      const notasDetalle = (notas || []).filter((n) => Number(n.id_detalle) === Number(id_detalle));
+      totalSuma = notasDetalle.reduce((acc, n) => acc + Number(n.nota_obtenida ?? n.nota ?? 0), 0);
+    }
+    return Math.min(100, Math.round(totalSuma * 100) / 100);
   };
 
   // Previsualización del cierre — llama a sp_preview_cierre_gestion vía API

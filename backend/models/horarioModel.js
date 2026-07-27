@@ -6,8 +6,14 @@ export const crear = async (dia, hora_inicio, hora_fin) => {
 };
 
 export const obtenerTodos = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_horarios()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_horarios()');
+        if (Array.isArray(rows[0])) return rows[0];
+        if (Array.isArray(rows)) return rows;
+    } catch (e) {
+        const [rows] = await pool.query('SELECT id_horario, dia, hora_inicio, hora_fin FROM horario');
+        return rows;
+    }
 };
 
 export const obtenerPorId = async (id_horario) => {

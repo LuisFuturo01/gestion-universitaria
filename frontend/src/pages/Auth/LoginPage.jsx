@@ -22,20 +22,22 @@ export default function LoginPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    // Simula latencia de red para que se sienta como una llamada real al backend
-    setTimeout(() => {
-      const result = login(formData.username, formData.password);
+    try {
+      const result = await login(formData.username, formData.password);
       setLoading(false);
       if (!result.ok) {
-        setError(result.mensaje);
+        setError(result.mensaje || "Credenciales incorrectas.");
         return;
       }
       navigate("/dashboard", { replace: true });
-    }, 300);
+    } catch (err) {
+      setLoading(false);
+      setError("No se pudo completar la solicitud. Verifique los datos o intente nuevamente.");
+    }
   };
 
   const fillDemo = (usuario, clave) => {

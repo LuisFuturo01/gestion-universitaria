@@ -37,9 +37,14 @@ function VistaEstudiante({ session, data, gestionActiva }) {
   const [idMateria, setIdMateria] = useState(null);
 
   const misInscripcionesActivas = useMemo(() => {
+    const activeGId = gestionActiva?.id_gestion;
     const raw = data
       .getHistorialEstudiante(estudiante.id_persona)
-      .filter((h) => Number(h.gestion?.id_gestion) === Number(gestionActiva?.id_gestion) && h.estado === "Inscrito");
+      .filter((h) => {
+        const matchGestion = !activeGId || Number(h.gestion?.id_gestion) === Number(activeGId);
+        const matchEstado = h.estado !== "Retirado" && h.estado !== "Abandono";
+        return matchGestion && matchEstado;
+      });
 
     const mapa = new Map();
     raw.forEach((item) => {
@@ -240,7 +245,7 @@ function VistaAdministrador({ data, gestionActiva }) {
       .map((e) => {
         const estReal = data.getEstudiante ? data.getEstudiante(e.id_persona) : e;
         const persona = data.getPersona(e.id_persona);
-        const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => h.gestion?.id_gestion === idGestion);
+        const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => Number(h.gestion?.id_gestion) === Number(idGestion));
         return { estudiante: estReal, persona, historial };
       })
       .filter((f) => {

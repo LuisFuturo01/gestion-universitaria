@@ -15,7 +15,15 @@ export const getGestiones = async (req, res) => {
         const gestiones = await gestionModel.obtenerTodas();
         res.status(200).json(gestiones);
     } catch (error) {
-        res.status(500).json({ error: 'Error al obtener las gestiones' });
+        console.error('[GESTION CONTROLLER ERROR]:', error.message);
+        // Fallback directo
+        try {
+            const { pool } = await import('../config/db.js');
+            const [rows] = await pool.query('SELECT id_gestion, periodo, estado FROM gestion ORDER BY id_gestion DESC');
+            res.status(200).json(rows);
+        } catch (e2) {
+            res.status(500).json({ error: 'Error al obtener las gestiones' });
+        }
     }
 };
 
@@ -86,40 +94,6 @@ export const iniciarGestion = async (req, res) => {
         const { periodo } = req.body; // ej: "I/2026", "II/2026", "Verano/2026", "Invierno/2026"
         if (!periodo || !periodo.includes('/')) {
             return res.status(400).json({ error: 'El formato de periodo debe ser tipo I/2026, II/2026, Verano/2026 o Invierno/2026.' });
-        }
-
-        const partes = periodo.split('/');
-        const tipo = partes[0].trim();
-        const anio = parseInt(partes[1].trim(), 10);
-
-        const ahora = new Date();
-        const mesActual = ahora.getMonth() + 1; // 1 = Enero, 2 = Febrero, ..., 7 = Julio, 8 = Agosto
-        const anioActual = ahora.getFullYear();
-
-        // Validaciones cronológicas requeridas:
-        // - I/Año: mínimo Febrero (mes >= 2)
-        // - II/Año: mínimo Agosto (mes >= 8)
-        // - Verano/Año: Enero (mes == 1)
-        // - Invierno/Año: Julio (mes == 7)
-        if (tipo === 'I' && mesActual < 2 && anio <= anioActual) {
-            return res.status(400).json({
-                error: `No es posible iniciar el primer semestre (${periodo}) antes de Febrero. Mes actual del sistema: ${mesActual}.`
-            });
-        }
-        if (tipo === 'II' && mesActual < 8 && anio <= anioActual) {
-            return res.status(400).json({
-                error: `No es posible iniciar el segundo semestre (${periodo}) antes de Agosto. Mes actual del sistema: ${mesActual}.`
-            });
-        }
-        if (tipo === 'Verano' && mesActual !== 1 && anio <= anioActual) {
-            return res.status(400).json({
-                error: `La temporada de Verano (${periodo}) únicamente puede iniciarse en Enero. Mes actual del sistema: ${mesActual}.`
-            });
-        }
-        if (tipo === 'Invierno' && mesActual !== 7 && anio <= anioActual) {
-            return res.status(400).json({
-                error: `La temporada de Invierno (${periodo}) únicamente puede iniciarse en Julio. Mes actual del sistema: ${mesActual}.`
-            });
         }
 
         const resultado = await gestionModel.iniciarGestionConParalelos(periodo);

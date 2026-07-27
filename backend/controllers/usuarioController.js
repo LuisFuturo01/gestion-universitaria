@@ -75,7 +75,11 @@ export const insertaUsuario = async (req, res) => {
                     );
                 } else if (rolId === 2) { // Director
                     await connection.query(
-                        "INSERT INTO director_carrera (id_persona, id_carrera, gestion) VALUES (?, ?, '2026') ON DUPLICATE KEY UPDATE id_carrera = VALUES(id_carrera)",
+                        "INSERT IGNORE INTO director_carrera (id_persona) VALUES (?)",
+                        [idPersonaNuevo]
+                    );
+                    await connection.query(
+                        "INSERT INTO director_carrera_asignacion (id_persona, id_carrera, gestion) VALUES (?, ?, '2026') ON DUPLICATE KEY UPDATE id_carrera = VALUES(id_carrera)",
                         [idPersonaNuevo, carreraId]
                     );
                 } else if (rolId === 1) { // Admin

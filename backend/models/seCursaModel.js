@@ -9,8 +9,14 @@ export const crear = async (id_materia, id_paralelo, id_aula, id_horario) => {
 };
 
 export const obtenerTodas = async () => {
-    const [rows] = await pool.query('CALL sp_obtener_se_cursa()');
-    return rows[0];
+    try {
+        const [rows] = await pool.query('CALL sp_obtener_se_cursa()');
+        if (Array.isArray(rows[0])) return rows[0];
+        if (Array.isArray(rows)) return rows;
+    } catch (e) {
+        const [rows] = await pool.query('SELECT id_materia, id_paralelo, id_aula, id_horario FROM se_cursa');
+        return rows;
+    }
 };
 
 export const obtenerPorParalelo = async (id_materia, id_paralelo) => {
