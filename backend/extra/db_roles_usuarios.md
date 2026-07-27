@@ -17,7 +17,7 @@ El script ejecutable oficial es [`crear_usuarios_db_roles.sql`](file:///d:/xampp
 | `usr_estudiante` | `123456` | **Estudiante** | `GRANT SELECT` en tablas de catálogo, kárdex y oferta.<br>`GRANT EXECUTE` en `sp_realizar_inscripcion`, `sp_retirar_inscripcion`, `fn_ya_inscrito`, `fn_tiene_prerrequisitos`. |
 | `usr_docente` | `123456` | **Docente** | `GRANT SELECT` en catálogo.<br>`GRANT SELECT, INSERT, UPDATE, DELETE` en `criterio_evaluacion` y `nota`.<br>`GRANT EXECUTE` en `sp_crear_criterio`, `sp_actualizar_criterio`, `sp_eliminar_criterio`, `sp_crear_nota`, `sp_actualizar_nota`, `sp_eliminar_nota`, `fn_calcular_nota_final`. |
 | `usr_director` | `123456` | **Director de Carrera** | `GRANT SELECT, INSERT, UPDATE, DELETE` en estructura académica (carreras, menciones, planes, materias, paralelos, aulas, horarios, gestiones).<br>Puede crear administradores pero no usuarios corrientes.<br>`GRANT EXECUTE` en `sp_aperturar_paralelo_completo` y `sp_asignar_horarios_sin_choque`. |
-| `usr_admin` | `123456` | **Administrador** | `GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX ON sistemaacademico.*`.<br>Privilegios de ejecución en todos los SPs excepto `sp_cerrar_gestion`. |
+| `usr_admin` | `123456` | **Administrador** | `GRANT SELECT, INSERT, UPDATE, DELETE, ALTER ON sistemaacademico.*` (Sin `CREATE`, `DROP` ni `INDEX`).<br>Privilegios de ejecución en SPs administrativos explícitos (excluye `sp_cerrar_gestion`). |
 
 ---
 

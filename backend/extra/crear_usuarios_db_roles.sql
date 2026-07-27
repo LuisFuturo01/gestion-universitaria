@@ -124,11 +124,12 @@ GRANT EXECUTE ON PROCEDURE sistemaacademico.sp_asignar_horarios_sin_choque TO 'u
 
 -- ------------------------------------------------------------------------------
 -- E. USUARIO ADMINISTRADOR (usr_admin)
--- Privilegios administrativos completos sobre tablas. Excluye explícitamente la ejecución de sp_cerrar_gestion.
+-- Privilegios DML de datos y permiso estructural exclusivo 'ALTER' (Sin CREATE, DROP ni INDEX)
+-- Excluye explícitamente la ejecución de sp_cerrar_gestion.
 -- ------------------------------------------------------------------------------
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX ON sistemaacademico.* TO 'usr_admin'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, ALTER ON sistemaacademico.* TO 'usr_admin'@'localhost';
 
--- Procedimientos administrativos autorizados (Excluye sp_cerrar_gestion)
+-- Procedimientos administrativos autorizados (Excluye explícitamente sp_cerrar_gestion)
 GRANT EXECUTE ON PROCEDURE sistemaacademico.sp_aperturar_paralelo_completo TO 'usr_admin'@'localhost';
 GRANT EXECUTE ON PROCEDURE sistemaacademico.sp_asignar_horarios_sin_choque TO 'usr_admin'@'localhost';
 GRANT EXECUTE ON PROCEDURE sistemaacademico.sp_asignar_aulas_horarios_con_reintentos TO 'usr_admin'@'localhost';
