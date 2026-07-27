@@ -7,6 +7,7 @@ import {
   generarReporteEstudiantesPorCarrera,
   generarReporteCargaDocente,
   generarReporteRendimiento,
+  generarReporteGeneralEstadisticasPDF,
 } from "../../utils/pdfReports";
 
 const COLORS = ["#1f9d55", "#e64545", "#f4b740"];
@@ -48,6 +49,17 @@ export default function ReportsPage() {
     ];
   }, [data]);
 
+  const handleExportarPDFGeneral = () => {
+    generarReporteGeneralEstadisticasPDF({
+      carreraNombre: carrera.nombre,
+      periodoActivo: gestionActiva?.periodo || "I/2026",
+      docentesCount: data.docentes.length,
+      estudiantesCount: data.estudiantes.length,
+      rendimiento,
+      cargaDocente,
+    });
+  };
+
   return (
     <div>
       <SectionHeader
@@ -56,6 +68,15 @@ export default function ReportsPage() {
           esAdmin
             ? `Panel de métricas técnicas y usuarios en el ámbito de ${carrera.nombre}`
             : `Métricas académicas, rendimiento por mención y carga docente en ${carrera.nombre}`
+        }
+        actions={
+          <button
+            className="button primary"
+            onClick={handleExportarPDFGeneral}
+            style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}
+          >
+            <span>📄</span> Exportar Información en PDF
+          </button>
         }
       />
 

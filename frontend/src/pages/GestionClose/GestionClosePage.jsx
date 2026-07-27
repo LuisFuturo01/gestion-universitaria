@@ -132,16 +132,34 @@ export default function GestionClosePage() {
   };
 
   const exportar = () => {
+    const filasExport = (previsualizacion || []).length > 0
+      ? previsualizacion.map((p) => ({
+          estudiante: p.estudiante || `${p.nombres || ''} ${p.apellidos || ''}`,
+          ru: p.ru || `RU-${p.id_persona || 1}`,
+          materia: p.sigla_materia ? `${p.sigla_materia} — ${p.materia}` : (p.materia || "Materia"),
+          nota_final: p.nota_final_proyectada !== undefined ? p.nota_final_proyectada : (p.nota_final || 0),
+          estado: p.estado_proyectado || p.estado || "Inscrito",
+        }))
+      : (data.detalle || []).slice(0, 50).map((d) => {
+          const pers = data.getPersona(d.id_inscripcion);
+          const mat = data.getMateria(d.id_materia);
+          return {
+            estudiante: pers ? `${pers.nombres} ${pers.apellidos}` : `Estudiante #${d.id_inscripcion}`,
+            ru: pers?.ru || `RU-${d.id_inscripcion}`,
+            materia: mat ? `${mat.sigla} — ${mat.nombre}` : `MAT-${d.id_materia}`,
+            nota_final: d.nota_final || 0,
+            estado: d.estado || "Inscrito",
+          };
+        });
+
     generarReporteCierreGestion({
-      periodo: gestionActiva?.periodo || "I/2026",
-      filas: previsualizacion.map((p) => ({
-        estudiante: p.estudiante,
-        ru: p.ru,
-        materia: `${p.sigla_materia} — ${p.materia}`,
-        nota_final: p.nota_final_proyectada,
-        estado: p.estado_proyectado,
-      })),
-      resumen: { aprobados, reprobados, total: previsualizacion.length },
+      periodo: gestionActiva?.periodo || "Invierno/2026",
+      filas: filasExport,
+      resumen: {
+        aprobados: aprobados || filasExport.filter((f) => f.estado === "Aprobado").length,
+        reprobados: reprobados || filasExport.filter((f) => f.estado === "Reprobado").length,
+        total: filasExport.length,
+      },
     });
   };
 
@@ -164,16 +182,13 @@ export default function GestionClosePage() {
         title="Apertura y Cierre de Gestión Académica"
         subtitle={`Panel de Control Académico — Carrera: ${carrera.nombre}`}
         actions={
-          gestionActiva && (
-            <button
-              className="button secondary"
-              onClick={exportar}
-              disabled={previsualizacion.length === 0}
-              style={{ fontWeight: 600 }}
-            >
-              📄 Exportar Acta Oficial (PDF)
-            </button>
-          )
+          <button
+            className="button secondary"
+            onClick={exportar}
+            style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <span>📄</span> Exportar Acta Oficial (PDF)
+          </button>
         }
       />
 
