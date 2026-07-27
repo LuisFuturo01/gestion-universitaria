@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 26-07-2026 a las 22:53:26
+-- Tiempo de generación: 27-07-2026 a las 03:40:16
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -241,6 +241,120 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_aulas_horarios_con_reint
         v_asignados AS asignados_exitosos,
         p_max_intentos AS max_intentos_por_paralelo;
     
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_horarios_sin_choque` (IN `p_id_gestion` INT)   BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE v_id_materia INT;
+    DECLARE v_id_paralelo INT;
+    DECLARE v_id_aula INT;
+    DECLARE v_id_horario INT;
+    DECLARE v_intentos INT;
+    DECLARE v_asignado INT;
+    DECLARE v_conflicto INT;
+    DECLARE v_periodo VARCHAR(50) DEFAULT '';
+    DECLARE v_es_temporada INT DEFAULT 0;
+    DECLARE v_hora_ini TIME;
+    DECLARE v_hora_fin TIME;
+
+    -- 1. DECLARACIÓN DEL CURSOR DE PARALELOS
+    DECLARE cur_paralelos CURSOR FOR 
+        SELECT p.id_materia, p.id_paralelo 
+        FROM paralelo p
+        WHERE p.id_gestion = p_id_gestion;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    -- 2. VERIFICAR SI ES GESTIÓN DE TEMPORADA (INVIERNO O VERANO)
+    SELECT periodo INTO v_periodo FROM gestion WHERE id_gestion = p_id_gestion;
+    IF v_periodo LIKE 'Invierno%' OR v_periodo LIKE 'Verano%' THEN
+        SET v_es_temporada = 1;
+    END IF;
+
+    OPEN cur_paralelos;
+
+    read_loop: LOOP
+        FETCH cur_paralelos INTO v_id_materia, v_id_paralelo;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM se_cursa WHERE id_materia = v_id_materia AND id_paralelo = v_id_paralelo) THEN
+            SET v_intentos = 0;
+            SET v_asignado = 0;
+
+            while_loop: WHILE v_intentos < 100 AND v_asignado = 0 DO
+                SET v_intentos = v_intentos + 1;
+
+                -- Aula aleatoria
+                SELECT id_aula INTO v_id_aula 
+                FROM aula 
+                ORDER BY RAND() 
+                LIMIT 1;
+
+                IF v_es_temporada = 1 THEN
+                    -- Bloque intensivo de 4 horas (08-12, 12-16 o 16-20)
+                    SELECT DISTINCT hora_inicio, hora_fin 
+                    INTO v_hora_ini, v_hora_fin
+                    FROM horario 
+                    WHERE TIMESTAMPDIFF(HOUR, hora_inicio, hora_fin) = 4
+                    ORDER BY RAND() 
+                    LIMIT 1;
+
+                    -- Validar que NO haya choque de AULA ni choque de DOCENTE
+                    SELECT COUNT(*) INTO v_conflicto
+                    FROM se_cursa sc
+                    JOIN paralelo p ON sc.id_materia = p.id_materia AND sc.id_paralelo = p.id_paralelo
+                    JOIN paralelo p_actual ON p_actual.id_materia = v_id_materia AND p_actual.id_paralelo = v_id_paralelo AND p_actual.id_gestion = p_id_gestion
+                    JOIN horario h ON sc.id_horario = h.id_horario
+                    WHERE p.id_gestion = p_id_gestion
+                      AND h.hora_inicio = v_hora_ini 
+                      AND h.hora_fin = v_hora_fin
+                      AND (
+                          sc.id_aula = v_id_aula 
+                          OR (p_actual.id_docente IS NOT NULL AND p.id_docente = p_actual.id_docente AND (sc.id_materia != v_id_materia OR sc.id_paralelo != v_id_paralelo))
+                      );
+
+                    IF v_conflicto = 0 THEN
+                        INSERT INTO se_cursa (id_materia, id_paralelo, id_aula, id_horario)
+                        SELECT v_id_materia, v_id_paralelo, v_id_aula, h.id_horario
+                        FROM horario h
+                        WHERE h.hora_inicio = v_hora_ini 
+                          AND h.hora_fin = v_hora_fin
+                          AND h.dia IN ('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes');
+                        
+                        SET v_asignado = 1;
+                    END IF;
+                ELSE
+                    -- Semestre regular
+                    SELECT id_horario INTO v_id_horario
+                    FROM horario 
+                    WHERE TIMESTAMPDIFF(HOUR, hora_inicio, hora_fin) = 2
+                    ORDER BY RAND() 
+                    LIMIT 1;
+
+                    SELECT COUNT(*) INTO v_conflicto
+                    FROM se_cursa sc
+                    JOIN paralelo p ON sc.id_materia = p.id_materia AND sc.id_paralelo = p.id_paralelo
+                    JOIN paralelo p_actual ON p_actual.id_materia = v_id_materia AND p_actual.id_paralelo = v_id_paralelo AND p_actual.id_gestion = p_id_gestion
+                    WHERE p.id_gestion = p_id_gestion
+                      AND sc.id_horario = v_id_horario
+                      AND (
+                          sc.id_aula = v_id_aula 
+                          OR (p_actual.id_docente IS NOT NULL AND p.id_docente = p_actual.id_docente AND (sc.id_materia != v_id_materia OR sc.id_paralelo != v_id_paralelo))
+                      );
+
+                    IF v_conflicto = 0 THEN
+                        INSERT INTO se_cursa (id_materia, id_paralelo, id_aula, id_horario)
+                        VALUES (v_id_materia, v_id_paralelo, v_id_aula, v_id_horario);
+                        SET v_asignado = 1;
+                    END IF;
+                END IF;
+            END WHILE;
+        END IF;
+    END LOOP;
+
+    CLOSE cur_paralelos;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestion` INT)   BEGIN
@@ -799,74 +913,99 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_preview_cierre_gestion` (IN `p_i
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_realizar_inscripcion` (IN `p_id_estudiante` INT, IN `p_id_gestion` INT, IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
-DECLARE v_id_inscripcion INT DEFAULT NULL;
-DECLARE EXIT HANDLER FOR SQLEXCEPTION
-BEGIN
-ROLLBACK;
-RESIGNAL;
-END;
-START TRANSACTION;
-IF NOT fn_existe_estudiante(p_id_estudiante) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='El estudiante no existe.';
-END IF;
-IF NOT fn_existe_gestion(p_id_gestion) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='La gestion no existe.';
-END IF;
-IF NOT fn_existe_materia(p_id_materia) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='La materia no existe.';
-END IF;
-IF NOT fn_existe_paralelo(p_id_materia,p_id_paralelo) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='El paralelo no existe.';
-END IF;
-IF NOT fn_cupo_disponible(p_id_materia,p_id_paralelo) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='No existen cupos disponibles.';
-END IF;
-IF fn_ya_inscrito(p_id_estudiante,p_id_gestion,p_id_materia) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='El estudiante ya esta inscrito en esa materia.';
-END IF;
-IF NOT fn_tiene_prerrequisitos(p_id_estudiante,p_id_plan,p_id_materia) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='No cumple los prerrequisitos.';
-END IF;
-SELECT id_inscripcion
-INTO v_id_inscripcion
-FROM INSCRIPCION
-WHERE id_estudiante=p_id_estudiante
-AND id_gestion=p_id_gestion
-LIMIT 1;
-IF v_id_inscripcion IS NULL THEN
-INSERT INTO INSCRIPCION(id_estudiante, id_gestion, fecha_registro)
-VALUES(p_id_estudiante, p_id_gestion, CURDATE());
-SET v_id_inscripcion = LAST_INSERT_ID();
-END IF;
-INSERT INTO DETALLE_INSCRIPCION(id_inscripcion, id_materia, id_paralelo, estado, nota_final)
-VALUES(v_id_inscripcion, p_id_materia, p_id_paralelo, 'Inscrito', 0);
-COMMIT;
+    DECLARE v_id_inscripcion INT DEFAULT NULL;
+    DECLARE v_cupo_max INT DEFAULT 35;
+    DECLARE v_cupo_act INT DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    IF NOT fn_existe_estudiante(p_id_estudiante) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El estudiante no existe.';
+    END IF;
+    IF NOT fn_existe_gestion(p_id_gestion) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La gestion no existe.';
+    END IF;
+    IF NOT fn_existe_materia(p_id_materia) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='La materia no existe.';
+    END IF;
+
+    -- Validar que el paralelo exista en esa gestión específica
+    IF NOT EXISTS (SELECT 1 FROM paralelo WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo AND id_gestion = p_id_gestion) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El paralelo no existe en la gestión seleccionada.';
+    END IF;
+
+    IF fn_ya_inscrito(p_id_estudiante, p_id_gestion, p_id_materia) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El estudiante ya está inscrito en esa materia.';
+    END IF;
+
+    IF NOT fn_tiene_prerrequisitos(p_id_estudiante, p_id_plan, p_id_materia) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='No cumple los prerrequisitos de la materia.';
+    END IF;
+
+    -- Obtener o crear cabecera de inscripción
+    SELECT id_inscripcion INTO v_id_inscripcion
+    FROM inscripcion
+    WHERE id_estudiante = p_id_estudiante AND id_gestion = p_id_gestion
+    LIMIT 1;
+
+    IF v_id_inscripcion IS NULL THEN
+        INSERT INTO inscripcion (id_estudiante, id_gestion, fecha_registro)
+        VALUES (p_id_estudiante, p_id_gestion, CURDATE());
+        SET v_id_inscripcion = LAST_INSERT_ID();
+    END IF;
+
+    -- Insertar el detalle de inscripción
+    INSERT INTO detalle_inscripcion (id_inscripcion, id_materia, id_paralelo, estado, nota_final)
+    VALUES (v_id_inscripcion, p_id_materia, p_id_paralelo, 'Inscrito', 0);
+
+    COMMIT;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_retirar_inscripcion` (IN `p_id_detalle` INT)   BEGIN
-DECLARE EXIT HANDLER FOR SQLEXCEPTION
-BEGIN
-ROLLBACK;
-RESIGNAL;
-END;
-START TRANSACTION;
-IF NOT EXISTS(
-SELECT 1 FROM DETALLE_INSCRIPCION WHERE id_detalle=p_id_detalle
-) THEN
-SIGNAL SQLSTATE '45000'
-SET MESSAGE_TEXT='La inscripcion no existe.';
-END IF;
-UPDATE DETALLE_INSCRIPCION
-SET estado='Abandono'
-WHERE id_detalle=p_id_detalle;
-COMMIT;
+    DECLARE v_id_materia INT;
+    DECLARE v_id_paralelo INT;
+    DECLARE v_id_gestion INT;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    IF NOT EXISTS(SELECT 1 FROM detalle_inscripcion WHERE id_detalle = p_id_detalle) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La inscripción no existe.';
+    END IF;
+
+    -- Obtener la materia, paralelo y gestión para liberar el cupo
+    SELECT d.id_materia, d.id_paralelo, i.id_gestion 
+    INTO v_id_materia, v_id_paralelo, v_id_gestion
+    FROM detalle_inscripcion d
+    JOIN inscripcion i ON d.id_inscripcion = i.id_inscripcion
+    WHERE d.id_detalle = p_id_detalle
+    LIMIT 1;
+
+    -- Eliminar la asignación de notas asociadas si existieran
+    DELETE FROM nota WHERE id_detalle = p_id_detalle;
+
+    -- Eliminar la materia inscrita de la planilla
+    DELETE FROM detalle_inscripcion WHERE id_detalle = p_id_detalle;
+
+    -- Decrementar el cupo ocupado en el paralelo de la gestión correspondiente
+    UPDATE paralelo
+    SET cupo_actual = GREATEST(cupo_actual - 1, 0)
+    WHERE id_materia = v_id_materia 
+      AND id_paralelo = v_id_paralelo 
+      AND id_gestion = v_id_gestion;
+
+    COMMIT;
 END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_set_audit_user` (IN `p_id_usuario` INT)   BEGIN
@@ -1020,9 +1159,17 @@ RETURN v_total = v_aprobadas;
 END$$
 
 CREATE DEFINER=`root`@`localhost` FUNCTION `fn_ya_inscrito` (`p_id_estudiante` INT, `p_id_gestion` INT, `p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
-DECLARE v_existe INT;
-SELECT COUNT(*) INTO v_existe FROM INSCRIPCION i INNER JOIN DETALLE_INSCRIPCION d ON i.id_inscripcion=d.id_inscripcion WHERE i.id_estudiante=p_id_estudiante AND i.id_gestion=p_id_gestion AND d.id_materia=p_id_materia;
-RETURN v_existe>0;
+    DECLARE v_existe INT DEFAULT 0;
+    
+    SELECT COUNT(*) INTO v_existe 
+    FROM inscripcion i 
+    INNER JOIN detalle_inscripcion d ON i.id_inscripcion = d.id_inscripcion 
+    WHERE i.id_estudiante = p_id_estudiante 
+      AND i.id_gestion = p_id_gestion 
+      AND d.id_materia = p_id_materia
+      AND d.estado = 'Inscrito';
+      
+    RETURN (v_existe > 0);
 END$$
 
 DELIMITER ;
@@ -2393,7 +2540,70 @@ INSERT INTO `auditoria` (`id_auditoria`, `id_usuario`, `tipo`, `accion`, `fecha`
 (2050, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '14:19:54'),
 (2051, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '15:42:45'),
 (2052, 7, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '15:42:58'),
-(2053, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '16:44:21');
+(2053, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '16:44:21'),
+(2054, NULL, 'UPDATE', 'Actualización persona ID=2 de María Elena a Manuel Ramiro', '2026-07-26', '17:02:21'),
+(2055, NULL, 'UPDATE', 'Actualización persona ID=3 de Jorge Luis a Francisco', '2026-07-26', '17:02:21'),
+(2056, NULL, 'UPDATE', 'Actualización persona ID=4 de Gabriela a Luis Alejandro', '2026-07-26', '17:02:21'),
+(2057, NULL, 'INSERT', 'Nuevo docente Reg=DOC-2002 Grado=M.Sc.', '2026-07-26', '17:02:21'),
+(2058, NULL, 'INSERT', 'Nuevo docente Reg=DOC-2003 Grado=Lic.', '2026-07-26', '17:02:21'),
+(2059, NULL, 'INSERT', 'Nuevo estudiante RU=RU-1004 Plan=1 Ingreso=2022', '2026-07-26', '17:02:21'),
+(2060, NULL, 'UPDATE', 'Actualización persona ID=1 de Carlos Andrés a Carlos', '2026-07-26', '17:02:55'),
+(2061, NULL, 'INSERT', 'Nuevo estudiante RU=RU-1001 Plan=1 Ingreso=2021', '2026-07-26', '17:02:55'),
+(2062, NULL, 'INSERT', 'Nueva nota ID=1001 puntaje=85 criterio=10', '2026-07-26', '17:06:37'),
+(2063, NULL, 'INSERT', 'Nueva nota ID=1002 puntaje=78 criterio=11', '2026-07-26', '17:06:37'),
+(2064, NULL, 'INSERT', 'Nueva nota ID=1003 puntaje=90 criterio=12', '2026-07-26', '17:06:37'),
+(2065, NULL, 'INSERT', 'Nueva nota ID=1004 puntaje=100 criterio=13', '2026-07-26', '17:06:37'),
+(2066, NULL, 'INSERT', 'Nueva nota ID=1005 puntaje=45 criterio=10', '2026-07-26', '17:06:37'),
+(2067, NULL, 'INSERT', 'Nueva nota ID=1006 puntaje=50 criterio=11', '2026-07-26', '17:06:37'),
+(2068, NULL, 'INSERT', 'Nueva nota ID=1007 puntaje=92 criterio=14', '2026-07-26', '17:06:37'),
+(2069, NULL, 'INSERT', 'Nueva nota ID=1008 puntaje=88 criterio=15', '2026-07-26', '17:06:37'),
+(2070, 2, 'INSERT', 'Apertura de Gestión Académica Invierno/2026', '2026-07-01', '08:00:00'),
+(2071, 2, 'INSERT', 'Asignación de Materia: INF-111 Paralelo A', '2026-07-02', '09:30:15'),
+(2072, 2, 'INSERT', 'Asignación de Materia: INF-112 Paralelo A', '2026-07-02', '09:32:00'),
+(2073, 3, 'INSERT', 'Asignación de Materia: INF-113 Paralelo A', '2026-07-03', '10:14:22'),
+(2074, 4, 'INSERT', 'Inscripción de Estudiante en INF-111 e INF-112 (Invierno/2026)', '2026-07-20', '09:15:00'),
+(2075, 2, 'INSERT', 'Configuración de Criterios de Evaluación para INF-111 (100%)', '2026-07-21', '14:20:00'),
+(2076, 2, 'INSERT', 'Ingreso de Calificaciones Parciales para Estudiante 4 en INF-111', '2026-07-25', '16:45:10'),
+(2077, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:07:22'),
+(2078, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:22:43'),
+(2079, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:22:52'),
+(2080, 7, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:25:00'),
+(2081, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:34:34'),
+(2082, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '17:37:11'),
+(2083, NULL, 'UPDATE', 'Nota ID=1001 actualizada de 85 a 29.5', '2026-07-26', '18:14:24'),
+(2084, NULL, 'UPDATE', 'Nota ID=1002 actualizada de 78 a 24.18', '2026-07-26', '18:15:44'),
+(2085, NULL, 'UPDATE', 'Nota ID=1003 actualizada de 90 a 27', '2026-07-26', '18:15:44'),
+(2086, NULL, 'UPDATE', 'Nota ID=1005 actualizada de 45 a 13.5', '2026-07-26', '18:15:44'),
+(2087, NULL, 'UPDATE', 'Nota ID=1006 actualizada de 50 a 15.5', '2026-07-26', '18:15:44'),
+(2088, NULL, 'UPDATE', 'Nota ID=1007 actualizada de 92 a 36.8', '2026-07-26', '18:15:44'),
+(2089, NULL, 'UPDATE', 'Nota ID=1008 actualizada de 88 a 52.8', '2026-07-26', '18:15:44'),
+(2090, NULL, 'UPDATE', 'Nota ID=1001 actualizada de 29.5 a 30', '2026-07-26', '18:18:49'),
+(2091, NULL, 'UPDATE', 'Nota ID=1002 actualizada de 24.18 a 31', '2026-07-26', '18:18:58'),
+(2092, NULL, 'UPDATE', 'Nota ID=1002 actualizada de 31 a 31', '2026-07-26', '18:19:13'),
+(2093, NULL, 'UPDATE', 'Nota ID=1002 actualizada de 31 a 31', '2026-07-26', '18:19:15'),
+(2094, NULL, 'UPDATE', 'Nota ID=1002 actualizada de 31 a 31', '2026-07-26', '18:19:17'),
+(2095, NULL, 'UPDATE', 'Nota ID=1006 actualizada de 15.5 a 15.5', '2026-07-26', '18:19:19'),
+(2096, NULL, 'UPDATE', 'Nota ID=1006 actualizada de 15.5 a 16', '2026-07-26', '18:19:36'),
+(2097, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:22:57'),
+(2098, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:33:37'),
+(2099, NULL, 'INSERT', 'Nueva nota ID=1009 puntaje=1.5 criterio=12', '2026-07-26', '18:39:57'),
+(2100, NULL, 'INSERT', 'Nueva nota ID=1010 puntaje=2.5 criterio=11', '2026-07-26', '18:40:01'),
+(2101, 3, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:43:44'),
+(2102, 12, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:44:04'),
+(2103, 455, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:44:27'),
+(2104, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:44:36'),
+(2105, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:46:41'),
+(2106, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:46:53'),
+(2107, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '18:47:03'),
+(2108, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '20:52:18'),
+(2109, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '20:57:55'),
+(2110, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '20:58:34'),
+(2111, 477, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '20:58:52'),
+(2112, 29, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '20:59:10'),
+(2113, NULL, 'INSERT', 'Nueva nota ID=1011 puntaje=15 criterio=10', '2026-07-26', '21:00:14'),
+(2114, NULL, 'INSERT', 'Nueva nota ID=1012 puntaje=31 criterio=11', '2026-07-26', '21:00:25'),
+(2115, NULL, 'INSERT', 'Nueva nota ID=1013 puntaje=30 criterio=12', '2026-07-26', '21:00:39'),
+(2116, 1, 'INSERT', 'Inicio de sesión exitoso desde IP ::1', '2026-07-26', '21:00:58');
 
 -- --------------------------------------------------------
 
@@ -2512,6 +2722,18 @@ CREATE TABLE `criterio_evaluacion` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Volcado de datos para la tabla `criterio_evaluacion`
+--
+
+INSERT INTO `criterio_evaluacion` (`id_criterio`, `id_materia`, `id_paralelo`, `nombre`, `ponderacion`) VALUES
+(10, 1, 1, 'Primer Examen Parcial', 15),
+(11, 1, 1, 'Segundo Examen Parcial', 31),
+(12, 1, 1, 'Examen Final Consolidado', 30),
+(14, 2, 1, 'Evaluación Continua', 40),
+(15, 2, 1, 'Proyecto de Hardware/Lógica', 60),
+(16, 1, 1, 'proy', 9);
+
+--
 -- Disparadores `criterio_evaluacion`
 --
 DELIMITER $$
@@ -2546,6 +2768,20 @@ CREATE TABLE `detalle_inscripcion` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Volcado de datos para la tabla `detalle_inscripcion`
+--
+
+INSERT INTO `detalle_inscripcion` (`id_detalle`, `id_inscripcion`, `id_materia`, `id_paralelo`, `estado`, `nota_final`) VALUES
+(501, 100, 1, 1, 'Inscrito', 0),
+(502, 100, 2, 1, 'Inscrito', 0),
+(504, 101, 1, 1, 'Inscrito', 0),
+(505, 101, 7, 1, 'Inscrito', 0),
+(507, 102, 2, 1, 'Abandono', 0),
+(511, 103, 1, 1, 'Reprobado', 20.86),
+(512, 102, 1, 1, 'Reprobado', 0),
+(515, 102, 2, 1, 'Reprobado', 0);
+
+--
 -- Disparadores `detalle_inscripcion`
 --
 DELIMITER $$
@@ -2558,9 +2794,14 @@ $$
 DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `trg_incrementar_cupo_actual` AFTER INSERT ON `detalle_inscripcion` FOR EACH ROW BEGIN
+    DECLARE v_id_gestion INT DEFAULT 1;
+    SELECT id_gestion INTO v_id_gestion FROM inscripcion WHERE id_inscripcion = NEW.id_inscripcion LIMIT 1;
+    
     UPDATE paralelo
     SET cupo_actual = cupo_actual + 1
-    WHERE id_materia = NEW.id_materia AND id_paralelo = NEW.id_paralelo;
+    WHERE id_materia = NEW.id_materia 
+      AND id_paralelo = NEW.id_paralelo
+      AND id_gestion = v_id_gestion;
 END
 $$
 DELIMITER ;
@@ -2578,27 +2819,24 @@ $$
 DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `trg_validar_inscripcion_paralelo_cupo` BEFORE INSERT ON `detalle_inscripcion` FOR EACH ROW BEGIN
-    DECLARE v_existe_paralelo INT DEFAULT 0;
-    DECLARE v_cupo_maximo INT DEFAULT 0;
+    DECLARE v_id_gestion INT;
+    DECLARE v_cupo_maximo INT DEFAULT 35;
     DECLARE v_cupo_actual INT DEFAULT 0;
     
-    -- Verificar que el paralelo existe
-    SELECT COUNT(*) INTO v_existe_paralelo
-    FROM paralelo
-    WHERE id_materia = NEW.id_materia 
-      AND id_paralelo = NEW.id_paralelo;
+    -- Obtener la gestión de la cabecera de inscripción
+    SELECT id_gestion INTO v_id_gestion
+    FROM inscripcion
+    WHERE id_inscripcion = NEW.id_inscripcion
+    LIMIT 1;
     
-    IF v_existe_paralelo = 0 THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Error: El paralelo especificado no existe para esta materia.';
-    END IF;
-    
-    -- Verificar cupo disponible
+    -- Verificar cupo disponible para esa gestión específica
     SELECT cupo_maximo, cupo_actual 
     INTO v_cupo_maximo, v_cupo_actual
     FROM paralelo
     WHERE id_materia = NEW.id_materia 
-      AND id_paralelo = NEW.id_paralelo;
+      AND id_paralelo = NEW.id_paralelo
+      AND id_gestion = v_id_gestion
+    LIMIT 1;
     
     IF v_cupo_actual >= v_cupo_maximo THEN
         SIGNAL SQLSTATE '45000'
@@ -2657,6 +2895,7 @@ CREATE TABLE `director_carrera` (
 --
 
 INSERT INTO `director_carrera` (`id_persona`) VALUES
+(2),
 (8),
 (13),
 (17),
@@ -2699,6 +2938,7 @@ CREATE TABLE `director_carrera_asignacion` (
 --
 
 INSERT INTO `director_carrera_asignacion` (`id_persona`, `id_carrera`, `gestion`) VALUES
+(2, 1, '2026-2028'),
 (8, 1, '2016-2018'),
 (8, 1, '2020-2022'),
 (13, 1, '2018-2020'),
@@ -2755,6 +2995,8 @@ CREATE TABLE `docente` (
 --
 
 INSERT INTO `docente` (`id_persona`, `registro_docente`, `grado_academico`) VALUES
+(2, 'DOC-2002', 'M.Sc.'),
+(3, 'DOC-2003', 'Lic.'),
 (7, '1015648', 'Msc.'),
 (8, '1015649', 'Dr.'),
 (9, '1015650', 'Lic.'),
@@ -2866,6 +3108,8 @@ CREATE TABLE `estudiante` (
 --
 
 INSERT INTO `estudiante` (`id_persona`, `ru`, `id_plan`, `anio_ingreso`) VALUES
+(1, '1005100', 1, 'I/1990'),
+(4, '1005000', 1, 'I/1990'),
 (77, '1006000', 1, 'I/1990'),
 (78, '1006001', 2, 'I/1990'),
 (79, '1006002', 3, 'I/1990'),
@@ -3332,7 +3576,7 @@ INSERT INTO `gestion` (`id_gestion`, `periodo`, `estado`) VALUES
 (23, 'II/2025', 'Cerrada'),
 (24, 'Verano/2026', 'Cerrada'),
 (25, 'I/2026', 'Cerrada'),
-(26, 'Invierno/2026', 'Activa');
+(26, 'Invierno/2026', 'Cerrada');
 
 -- --------------------------------------------------------
 
@@ -3410,6 +3654,16 @@ CREATE TABLE `inscripcion` (
   `id_gestion` int(11) NOT NULL,
   `fecha_registro` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `inscripcion`
+--
+
+INSERT INTO `inscripcion` (`id_inscripcion`, `id_estudiante`, `id_gestion`, `fecha_registro`) VALUES
+(100, 4, 6, '2026-07-20'),
+(101, 1, 6, '2026-07-20'),
+(102, 478, 26, '2026-07-26'),
+(103, 456, 26, '2026-07-26');
 
 -- --------------------------------------------------------
 
@@ -3754,6 +4008,22 @@ CREATE TABLE `nota` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Volcado de datos para la tabla `nota`
+--
+
+INSERT INTO `nota` (`id_nota`, `id_detalle`, `id_criterio`, `nota_obtenida`) VALUES
+(1001, 501, 10, 30),
+(1002, 501, 11, 31),
+(1003, 501, 12, 27),
+(1005, 504, 10, 13.5),
+(1006, 504, 11, 16),
+(1007, 502, 14, 36.8),
+(1008, 502, 15, 52.8),
+(1011, 511, 10, 15),
+(1012, 511, 11, 31),
+(1013, 511, 12, 30);
+
+--
 -- Disparadores `nota`
 --
 DELIMITER $$
@@ -3789,9 +4059,30 @@ $$
 DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `trg_validar_nota_max` BEFORE INSERT ON `nota` FOR EACH ROW BEGIN
-    IF NEW.nota_obtenida > 100 THEN
+    DECLARE v_max_ponderacion FLOAT;
+    
+    SELECT COALESCE(ponderacion, 100) INTO v_max_ponderacion
+    FROM criterio_evaluacion
+    WHERE id_criterio = NEW.id_criterio;
+    
+    IF NEW.nota_obtenida > v_max_ponderacion THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'La nota no puede exceder 100 puntos.';
+        SET MESSAGE_TEXT = 'Error: La nota obtenida no puede exceder la ponderación máxima asignada al criterio.';
+    END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_validar_nota_max_update` BEFORE UPDATE ON `nota` FOR EACH ROW BEGIN
+    DECLARE v_max_ponderacion FLOAT;
+    
+    SELECT COALESCE(ponderacion, 100) INTO v_max_ponderacion
+    FROM criterio_evaluacion
+    WHERE id_criterio = NEW.id_criterio;
+    
+    IF NEW.nota_obtenida > v_max_ponderacion THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Error: La nota obtenida no puede exceder la ponderación máxima asignada al criterio.';
     END IF;
 END
 $$
@@ -3818,314 +4109,633 @@ CREATE TABLE `paralelo` (
 --
 
 INSERT INTO `paralelo` (`id_materia`, `id_paralelo`, `nombre`, `cupo_maximo`, `cupo_actual`, `id_docente`, `id_gestion`) VALUES
-(1, 1, 'A', 40, 0, NULL, 26),
-(2, 1, 'A', 40, 0, NULL, 26),
+(1, 1, 'A', 40, 0, 2, 6),
+(1, 1, 'A', 40, 0, NULL, 25),
+(1, 1, 'A', 40, 0, 29, 26),
+(2, 1, 'A', 40, 0, 2, 6),
+(2, 1, 'A', 40, 0, NULL, 25),
+(2, 1, 'A', 40, 1, NULL, 26),
+(3, 1, 'A', 40, 1, 3, 6),
+(3, 1, 'A', 40, 0, NULL, 25),
 (3, 1, 'A', 40, 0, NULL, 26),
+(4, 1, 'A', 40, 0, NULL, 6),
+(4, 1, 'A', 40, 0, NULL, 25),
 (4, 1, 'A', 40, 0, NULL, 26),
+(5, 1, 'A', 40, 0, NULL, 6),
+(5, 1, 'A', 40, 0, NULL, 25),
 (5, 1, 'A', 40, 0, NULL, 26),
+(6, 1, 'A', 40, 0, NULL, 6),
+(6, 1, 'A', 40, 0, NULL, 25),
 (6, 1, 'A', 40, 0, NULL, 26),
+(7, 1, 'A', 40, 2, 3, 6),
+(7, 1, 'A', 40, 0, NULL, 25),
 (7, 1, 'A', 40, 0, NULL, 26),
+(8, 1, 'A', 40, 0, NULL, 6),
+(8, 1, 'A', 40, 0, NULL, 25),
 (8, 1, 'A', 40, 0, NULL, 26),
+(9, 1, 'A', 40, 0, NULL, 25),
 (9, 1, 'A', 40, 0, NULL, 26),
+(10, 1, 'A', 40, 0, NULL, 25),
 (10, 1, 'A', 40, 0, NULL, 26),
+(11, 1, 'A', 40, 0, NULL, 25),
 (11, 1, 'A', 40, 0, NULL, 26),
+(12, 1, 'A', 40, 0, NULL, 25),
 (12, 1, 'A', 40, 0, NULL, 26),
+(13, 1, 'A', 40, 0, NULL, 6),
+(13, 1, 'A', 40, 0, NULL, 25),
 (13, 1, 'A', 40, 0, NULL, 26),
+(14, 1, 'A', 40, 0, NULL, 6),
+(14, 1, 'A', 40, 0, NULL, 25),
 (14, 1, 'A', 40, 0, NULL, 26),
+(15, 1, 'A', 40, 0, NULL, 25),
 (15, 1, 'A', 40, 0, NULL, 26),
+(16, 1, 'A', 40, 0, NULL, 25),
 (16, 1, 'A', 40, 0, NULL, 26),
+(17, 1, 'A', 40, 0, NULL, 25),
 (17, 1, 'A', 40, 0, NULL, 26),
+(18, 1, 'A', 40, 0, NULL, 25),
 (18, 1, 'A', 40, 0, NULL, 26),
+(19, 1, 'A', 40, 0, NULL, 25),
 (19, 1, 'A', 40, 0, NULL, 26),
+(20, 1, 'A', 40, 0, NULL, 25),
 (20, 1, 'A', 40, 0, NULL, 26),
+(21, 1, 'A', 40, 0, NULL, 25),
 (21, 1, 'A', 40, 0, 29, 26),
+(22, 1, 'A', 40, 0, NULL, 25),
 (22, 1, 'A', 40, 0, 29, 26),
+(23, 1, 'A', 40, 0, NULL, 25),
 (23, 1, 'A', 40, 0, NULL, 26),
+(24, 1, 'A', 40, 0, NULL, 25),
 (24, 1, 'A', 40, 0, NULL, 26),
+(25, 1, 'A', 40, 0, NULL, 25),
 (25, 1, 'A', 40, 0, NULL, 26),
+(26, 1, 'A', 40, 0, NULL, 25),
 (26, 1, 'A', 40, 0, NULL, 26),
+(27, 1, 'A', 40, 0, NULL, 25),
 (27, 1, 'A', 40, 0, NULL, 26),
+(28, 1, 'A', 40, 0, NULL, 25),
 (28, 1, 'A', 40, 0, NULL, 26),
+(29, 1, 'A', 40, 0, NULL, 25),
 (29, 1, 'A', 40, 0, NULL, 26),
+(30, 1, 'A', 40, 0, NULL, 25),
 (30, 1, 'A', 40, 0, NULL, 26),
+(31, 1, 'A', 40, 0, NULL, 25),
 (31, 1, 'A', 40, 0, NULL, 26),
+(32, 1, 'A', 40, 0, NULL, 25),
 (32, 1, 'A', 40, 0, NULL, 26),
+(33, 1, 'A', 40, 0, NULL, 25),
 (33, 1, 'A', 40, 0, NULL, 26),
+(34, 1, 'A', 40, 0, NULL, 25),
 (34, 1, 'A', 40, 0, NULL, 26),
+(35, 1, 'A', 40, 0, NULL, 25),
 (35, 1, 'A', 40, 0, NULL, 26),
+(36, 1, 'A', 40, 0, NULL, 25),
 (36, 1, 'A', 40, 0, NULL, 26),
+(37, 1, 'A', 40, 0, NULL, 25),
 (37, 1, 'A', 40, 0, NULL, 26),
+(38, 1, 'A', 40, 0, NULL, 25),
 (38, 1, 'A', 40, 0, NULL, 26),
+(39, 1, 'A', 40, 0, NULL, 25),
 (39, 1, 'A', 40, 0, NULL, 26),
+(40, 1, 'A', 40, 0, NULL, 25),
 (40, 1, 'A', 40, 0, NULL, 26),
+(41, 1, 'A', 40, 0, NULL, 25),
 (41, 1, 'A', 40, 0, NULL, 26),
+(42, 1, 'A', 40, 0, NULL, 25),
 (42, 1, 'A', 40, 0, NULL, 26),
+(43, 1, 'A', 40, 0, NULL, 25),
 (43, 1, 'A', 40, 0, NULL, 26),
+(44, 1, 'A', 40, 0, NULL, 25),
 (44, 1, 'A', 40, 0, NULL, 26),
+(45, 1, 'A', 40, 0, NULL, 25),
 (45, 1, 'A', 40, 0, NULL, 26),
+(46, 1, 'A', 40, 0, NULL, 25),
 (46, 1, 'A', 40, 0, NULL, 26),
+(47, 1, 'A', 40, 0, NULL, 25),
 (47, 1, 'A', 40, 0, NULL, 26),
+(48, 1, 'A', 40, 0, NULL, 25),
 (48, 1, 'A', 40, 0, NULL, 26),
+(49, 1, 'A', 40, 0, NULL, 25),
 (49, 1, 'A', 40, 0, NULL, 26),
+(50, 1, 'A', 40, 0, NULL, 25),
 (50, 1, 'A', 40, 0, NULL, 26),
+(51, 1, 'A', 40, 0, NULL, 25),
 (51, 1, 'A', 40, 0, NULL, 26),
+(52, 1, 'A', 40, 0, NULL, 25),
 (52, 1, 'A', 40, 0, NULL, 26),
+(53, 1, 'A', 40, 0, NULL, 25),
 (53, 1, 'A', 40, 0, NULL, 26),
+(54, 1, 'A', 40, 0, NULL, 25),
 (54, 1, 'A', 40, 0, NULL, 26),
+(55, 1, 'A', 40, 0, NULL, 25),
 (55, 1, 'A', 40, 0, NULL, 26),
+(56, 1, 'A', 40, 0, NULL, 25),
 (56, 1, 'A', 40, 0, NULL, 26),
+(57, 1, 'A', 40, 0, NULL, 25),
 (57, 1, 'A', 40, 0, NULL, 26),
+(58, 1, 'A', 40, 0, NULL, 25),
 (58, 1, 'A', 40, 0, NULL, 26),
+(59, 1, 'A', 40, 0, NULL, 25),
 (59, 1, 'A', 40, 0, NULL, 26),
+(60, 1, 'A', 40, 0, NULL, 25),
 (60, 1, 'A', 40, 0, NULL, 26),
+(61, 1, 'A', 40, 0, NULL, 25),
 (61, 1, 'A', 40, 0, NULL, 26),
+(62, 1, 'A', 40, 0, NULL, 25),
 (62, 1, 'A', 40, 0, NULL, 26),
+(63, 1, 'A', 40, 0, NULL, 25),
 (63, 1, 'A', 40, 0, NULL, 26),
+(64, 1, 'A', 40, 0, NULL, 25),
 (64, 1, 'A', 40, 0, NULL, 26),
+(65, 1, 'A', 40, 0, NULL, 25),
 (65, 1, 'A', 40, 0, NULL, 26),
+(66, 1, 'A', 40, 0, NULL, 25),
 (66, 1, 'A', 40, 0, NULL, 26),
+(67, 1, 'A', 40, 0, NULL, 25),
 (67, 1, 'A', 40, 0, NULL, 26),
+(68, 1, 'A', 40, 0, NULL, 25),
 (68, 1, 'A', 40, 0, NULL, 26),
+(69, 1, 'A', 40, 0, NULL, 25),
 (69, 1, 'A', 40, 0, NULL, 26),
+(70, 1, 'A', 40, 0, NULL, 25),
 (70, 1, 'A', 40, 0, NULL, 26),
+(71, 1, 'A', 40, 0, NULL, 25),
 (71, 1, 'A', 40, 0, NULL, 26),
+(72, 1, 'A', 40, 0, NULL, 25),
 (72, 1, 'A', 40, 0, NULL, 26),
+(73, 1, 'A', 40, 0, NULL, 25),
 (73, 1, 'A', 40, 0, NULL, 26),
+(74, 1, 'A', 40, 0, NULL, 25),
 (74, 1, 'A', 40, 0, NULL, 26),
+(75, 1, 'A', 40, 0, NULL, 25),
 (75, 1, 'A', 40, 0, NULL, 26),
+(76, 1, 'A', 40, 0, NULL, 25),
 (76, 1, 'A', 40, 0, NULL, 26),
+(77, 1, 'A', 40, 0, NULL, 25),
 (77, 1, 'A', 40, 0, NULL, 26),
+(78, 1, 'A', 40, 0, NULL, 25),
 (78, 1, 'A', 40, 0, NULL, 26),
+(79, 1, 'A', 40, 0, NULL, 25),
 (79, 1, 'A', 40, 0, NULL, 26),
+(80, 1, 'A', 40, 0, NULL, 25),
 (80, 1, 'A', 40, 0, NULL, 26),
+(81, 1, 'A', 40, 0, NULL, 25),
 (81, 1, 'A', 40, 0, NULL, 26),
+(82, 1, 'A', 40, 0, NULL, 25),
 (82, 1, 'A', 40, 0, NULL, 26),
+(83, 1, 'A', 40, 0, NULL, 25),
 (83, 1, 'A', 40, 0, NULL, 26),
+(84, 1, 'A', 40, 0, NULL, 25),
 (84, 1, 'A', 40, 0, NULL, 26),
+(85, 1, 'A', 40, 0, NULL, 25),
 (85, 1, 'A', 40, 0, NULL, 26),
+(86, 1, 'A', 40, 0, NULL, 25),
 (86, 1, 'A', 40, 0, NULL, 26),
+(87, 1, 'A', 40, 0, NULL, 25),
 (87, 1, 'A', 40, 0, NULL, 26),
+(88, 1, 'A', 40, 0, NULL, 25),
 (88, 1, 'A', 40, 0, NULL, 26),
+(89, 1, 'A', 40, 0, NULL, 25),
 (89, 1, 'A', 40, 0, NULL, 26),
+(90, 1, 'A', 40, 0, NULL, 25),
 (90, 1, 'A', 40, 0, NULL, 26),
+(91, 1, 'A', 40, 0, NULL, 25),
 (91, 1, 'A', 40, 0, NULL, 26),
+(92, 1, 'A', 40, 0, NULL, 25),
 (92, 1, 'A', 40, 0, NULL, 26),
+(93, 1, 'A', 40, 0, NULL, 25),
 (93, 1, 'A', 40, 0, NULL, 26),
+(94, 1, 'A', 40, 0, NULL, 25),
 (94, 1, 'A', 40, 0, NULL, 26),
+(95, 1, 'A', 40, 0, NULL, 25),
 (95, 1, 'A', 40, 0, NULL, 26),
+(96, 1, 'A', 40, 0, NULL, 25),
 (96, 1, 'A', 40, 0, NULL, 26),
+(97, 1, 'A', 40, 0, NULL, 25),
 (97, 1, 'A', 40, 0, NULL, 26),
+(98, 1, 'A', 40, 0, NULL, 25),
 (98, 1, 'A', 40, 0, NULL, 26),
+(99, 1, 'A', 40, 0, NULL, 25),
 (99, 1, 'A', 40, 0, NULL, 26),
+(100, 1, 'A', 40, 0, NULL, 25),
 (100, 1, 'A', 40, 0, NULL, 26),
+(101, 1, 'A', 40, 0, NULL, 25),
 (101, 1, 'A', 40, 0, NULL, 26),
+(102, 1, 'A', 40, 0, NULL, 25),
 (102, 1, 'A', 40, 0, NULL, 26),
+(103, 1, 'A', 40, 0, NULL, 25),
 (103, 1, 'A', 40, 0, NULL, 26),
+(104, 1, 'A', 40, 0, NULL, 25),
 (104, 1, 'A', 40, 0, NULL, 26),
+(105, 1, 'A', 40, 0, NULL, 25),
 (105, 1, 'A', 40, 0, NULL, 26),
+(106, 1, 'A', 40, 0, NULL, 25),
 (106, 1, 'A', 40, 0, NULL, 26),
+(107, 1, 'A', 40, 0, NULL, 25),
 (107, 1, 'A', 40, 0, NULL, 26),
+(108, 1, 'A', 40, 0, NULL, 25),
 (108, 1, 'A', 40, 0, NULL, 26),
+(109, 1, 'A', 40, 0, NULL, 25),
 (109, 1, 'A', 40, 0, NULL, 26),
+(110, 1, 'A', 40, 0, NULL, 25),
 (110, 1, 'A', 40, 0, NULL, 26),
+(111, 1, 'A', 40, 0, NULL, 25),
 (111, 1, 'A', 40, 0, NULL, 26),
+(112, 1, 'A', 40, 0, NULL, 25),
 (112, 1, 'A', 40, 0, NULL, 26),
+(113, 1, 'A', 40, 0, NULL, 25),
 (113, 1, 'A', 40, 0, NULL, 26),
+(114, 1, 'A', 40, 0, NULL, 25),
 (114, 1, 'A', 40, 0, NULL, 26),
+(115, 1, 'A', 40, 0, NULL, 25),
 (115, 1, 'A', 40, 0, NULL, 26),
+(116, 1, 'A', 40, 0, NULL, 25),
 (116, 1, 'A', 40, 0, NULL, 26),
+(117, 1, 'A', 40, 0, NULL, 25),
 (117, 1, 'A', 40, 0, NULL, 26),
+(118, 1, 'A', 40, 0, NULL, 25),
 (118, 1, 'A', 40, 0, NULL, 26),
+(119, 1, 'A', 40, 0, NULL, 25),
 (119, 1, 'A', 40, 0, NULL, 26),
+(120, 1, 'A', 40, 0, NULL, 25),
 (120, 1, 'A', 40, 0, NULL, 26),
+(121, 1, 'A', 40, 0, NULL, 25),
 (121, 1, 'A', 40, 0, NULL, 26),
+(122, 1, 'A', 40, 0, NULL, 25),
 (122, 1, 'A', 40, 0, NULL, 26),
+(123, 1, 'A', 40, 0, NULL, 25),
 (123, 1, 'A', 40, 0, NULL, 26),
+(124, 1, 'A', 40, 0, NULL, 25),
 (124, 1, 'A', 40, 0, NULL, 26),
+(125, 1, 'A', 40, 0, NULL, 25),
 (125, 1, 'A', 40, 0, NULL, 26),
+(126, 1, 'A', 40, 0, NULL, 25),
 (126, 1, 'A', 40, 0, NULL, 26),
+(127, 1, 'A', 40, 0, NULL, 25),
 (127, 1, 'A', 40, 0, NULL, 26),
+(128, 1, 'A', 40, 0, NULL, 25),
 (128, 1, 'A', 40, 0, NULL, 26),
+(129, 1, 'A', 40, 0, NULL, 25),
 (129, 1, 'A', 40, 0, NULL, 26),
+(130, 1, 'A', 40, 0, NULL, 25),
 (130, 1, 'A', 40, 0, NULL, 26),
+(131, 1, 'A', 40, 0, NULL, 25),
 (131, 1, 'A', 40, 0, NULL, 26),
+(132, 1, 'A', 40, 0, NULL, 25),
 (132, 1, 'A', 40, 0, NULL, 26),
+(133, 1, 'A', 40, 0, NULL, 25),
 (133, 1, 'A', 40, 0, NULL, 26),
+(134, 1, 'A', 40, 0, NULL, 25),
 (134, 1, 'A', 40, 0, NULL, 26),
+(135, 1, 'A', 40, 0, NULL, 25),
 (135, 1, 'A', 40, 0, NULL, 26),
+(136, 1, 'A', 40, 0, NULL, 25),
 (136, 1, 'A', 40, 0, NULL, 26),
+(137, 1, 'A', 40, 0, NULL, 25),
 (137, 1, 'A', 40, 0, NULL, 26),
+(138, 1, 'A', 40, 0, NULL, 25),
 (138, 1, 'A', 40, 0, NULL, 26),
+(139, 1, 'A', 40, 0, NULL, 25),
 (139, 1, 'A', 40, 0, NULL, 26),
+(140, 1, 'A', 40, 0, NULL, 25),
 (140, 1, 'A', 40, 0, NULL, 26),
+(141, 1, 'A', 40, 0, NULL, 25),
 (141, 1, 'A', 40, 0, NULL, 26),
+(142, 1, 'A', 40, 0, NULL, 25),
 (142, 1, 'A', 40, 0, NULL, 26),
+(143, 1, 'A', 40, 0, NULL, 25),
 (143, 1, 'A', 40, 0, NULL, 26),
+(144, 1, 'A', 40, 0, NULL, 25),
 (144, 1, 'A', 40, 0, NULL, 26),
+(145, 1, 'A', 40, 0, NULL, 25),
 (145, 1, 'A', 40, 0, NULL, 26),
+(146, 1, 'A', 40, 0, NULL, 25),
 (146, 1, 'A', 40, 0, NULL, 26),
+(147, 1, 'A', 40, 0, NULL, 25),
 (147, 1, 'A', 40, 0, NULL, 26),
+(148, 1, 'A', 40, 0, NULL, 25),
 (148, 1, 'A', 40, 0, NULL, 26),
+(149, 1, 'A', 40, 0, NULL, 25),
 (149, 1, 'A', 40, 0, NULL, 26),
+(150, 1, 'A', 40, 0, NULL, 25),
 (150, 1, 'A', 40, 0, NULL, 26),
+(151, 1, 'A', 40, 0, NULL, 25),
 (151, 1, 'A', 40, 0, NULL, 26),
+(152, 1, 'A', 40, 0, NULL, 25),
 (152, 1, 'A', 40, 0, NULL, 26),
+(153, 1, 'A', 40, 0, NULL, 25),
 (153, 1, 'A', 40, 0, NULL, 26),
+(154, 1, 'A', 40, 0, NULL, 25),
 (154, 1, 'A', 40, 0, NULL, 26),
+(155, 1, 'A', 40, 0, NULL, 25),
 (155, 1, 'A', 40, 0, NULL, 26),
+(156, 1, 'A', 40, 0, NULL, 25),
 (156, 1, 'A', 40, 0, NULL, 26),
+(157, 1, 'A', 40, 0, NULL, 25),
 (157, 1, 'A', 40, 0, NULL, 26),
+(158, 1, 'A', 40, 0, NULL, 25),
 (158, 1, 'A', 40, 0, NULL, 26),
+(159, 1, 'A', 40, 0, NULL, 25),
 (159, 1, 'A', 40, 0, NULL, 26),
+(160, 1, 'A', 40, 0, NULL, 25),
 (160, 1, 'A', 40, 0, NULL, 26),
+(161, 1, 'A', 40, 0, NULL, 25),
 (161, 1, 'A', 40, 0, NULL, 26),
+(162, 1, 'A', 40, 0, NULL, 25),
 (162, 1, 'A', 40, 0, NULL, 26),
+(163, 1, 'A', 40, 0, NULL, 25),
 (163, 1, 'A', 40, 0, NULL, 26),
+(164, 1, 'A', 40, 0, NULL, 25),
 (164, 1, 'A', 40, 0, NULL, 26),
+(165, 1, 'A', 40, 0, NULL, 25),
 (165, 1, 'A', 40, 0, NULL, 26),
+(166, 1, 'A', 40, 0, NULL, 25),
 (166, 1, 'A', 40, 0, NULL, 26),
+(167, 1, 'A', 40, 0, NULL, 25),
 (167, 1, 'A', 40, 0, NULL, 26),
+(168, 1, 'A', 40, 0, NULL, 25),
 (168, 1, 'A', 40, 0, NULL, 26),
+(169, 1, 'A', 40, 0, NULL, 25),
 (169, 1, 'A', 40, 0, NULL, 26),
+(170, 1, 'A', 40, 0, NULL, 25),
 (170, 1, 'A', 40, 0, NULL, 26),
+(171, 1, 'A', 40, 0, NULL, 25),
 (171, 1, 'A', 40, 0, NULL, 26),
+(172, 1, 'A', 40, 0, NULL, 25),
 (172, 1, 'A', 40, 0, NULL, 26),
+(173, 1, 'A', 40, 0, NULL, 25),
 (173, 1, 'A', 40, 0, NULL, 26),
+(174, 1, 'A', 40, 0, NULL, 25),
 (174, 1, 'A', 40, 0, NULL, 26),
+(175, 1, 'A', 40, 0, NULL, 25),
 (175, 1, 'A', 40, 0, NULL, 26),
+(176, 1, 'A', 40, 0, NULL, 25),
 (176, 1, 'A', 40, 0, NULL, 26),
+(177, 1, 'A', 40, 0, NULL, 25),
 (177, 1, 'A', 40, 0, NULL, 26),
+(178, 1, 'A', 40, 0, NULL, 25),
 (178, 1, 'A', 40, 0, NULL, 26),
+(179, 1, 'A', 40, 0, NULL, 25),
 (179, 1, 'A', 40, 0, NULL, 26),
+(180, 1, 'A', 40, 0, NULL, 25),
 (180, 1, 'A', 40, 0, NULL, 26),
+(181, 1, 'A', 40, 0, NULL, 25),
 (181, 1, 'A', 40, 0, NULL, 26),
+(182, 1, 'A', 40, 0, NULL, 25),
 (182, 1, 'A', 40, 0, NULL, 26),
+(183, 1, 'A', 40, 0, NULL, 25),
 (183, 1, 'A', 40, 0, NULL, 26),
+(184, 1, 'A', 40, 0, NULL, 25),
 (184, 1, 'A', 40, 0, NULL, 26),
+(185, 1, 'A', 40, 0, NULL, 25),
 (185, 1, 'A', 40, 0, NULL, 26),
+(186, 1, 'A', 40, 0, NULL, 25),
 (186, 1, 'A', 40, 0, NULL, 26),
+(187, 1, 'A', 40, 0, NULL, 25),
 (187, 1, 'A', 40, 0, NULL, 26),
+(188, 1, 'A', 40, 0, NULL, 25),
 (188, 1, 'A', 40, 0, NULL, 26),
+(189, 1, 'A', 40, 0, NULL, 25),
 (189, 1, 'A', 40, 0, NULL, 26),
+(190, 1, 'A', 40, 0, NULL, 25),
 (190, 1, 'A', 40, 0, NULL, 26),
+(191, 1, 'A', 40, 0, NULL, 25),
 (191, 1, 'A', 40, 0, NULL, 26),
+(192, 1, 'A', 40, 0, NULL, 25),
 (192, 1, 'A', 40, 0, NULL, 26),
+(193, 1, 'A', 40, 0, NULL, 25),
 (193, 1, 'A', 40, 0, NULL, 26),
+(194, 1, 'A', 40, 0, NULL, 25),
 (194, 1, 'A', 40, 0, NULL, 26),
+(195, 1, 'A', 40, 0, NULL, 25),
 (195, 1, 'A', 40, 0, NULL, 26),
+(196, 1, 'A', 40, 0, NULL, 25),
 (196, 1, 'A', 40, 0, NULL, 26),
+(197, 1, 'A', 40, 0, NULL, 25),
 (197, 1, 'A', 40, 0, NULL, 26),
+(198, 1, 'A', 40, 0, NULL, 25),
 (198, 1, 'A', 40, 0, NULL, 26),
+(199, 1, 'A', 40, 0, NULL, 25),
 (199, 1, 'A', 40, 0, NULL, 26),
+(200, 1, 'A', 40, 0, NULL, 25),
 (200, 1, 'A', 40, 0, NULL, 26),
+(201, 1, 'A', 40, 0, NULL, 25),
 (201, 1, 'A', 40, 0, NULL, 26),
+(202, 1, 'A', 40, 0, NULL, 25),
 (202, 1, 'A', 40, 0, NULL, 26),
+(203, 1, 'A', 40, 0, NULL, 25),
 (203, 1, 'A', 40, 0, NULL, 26),
+(204, 1, 'A', 40, 0, NULL, 25),
 (204, 1, 'A', 40, 0, NULL, 26),
+(205, 1, 'A', 40, 0, NULL, 25),
 (205, 1, 'A', 40, 0, NULL, 26),
+(206, 1, 'A', 40, 0, NULL, 25),
 (206, 1, 'A', 40, 0, NULL, 26),
+(207, 1, 'A', 40, 0, NULL, 25),
 (207, 1, 'A', 40, 0, NULL, 26),
+(208, 1, 'A', 40, 0, NULL, 25),
 (208, 1, 'A', 40, 0, NULL, 26),
+(209, 1, 'A', 40, 0, NULL, 25),
 (209, 1, 'A', 40, 0, NULL, 26),
+(210, 1, 'A', 40, 0, NULL, 25),
 (210, 1, 'A', 40, 0, NULL, 26),
+(211, 1, 'A', 40, 0, NULL, 25),
 (211, 1, 'A', 40, 0, NULL, 26),
+(212, 1, 'A', 40, 0, NULL, 25),
 (212, 1, 'A', 40, 0, NULL, 26),
+(213, 1, 'A', 40, 0, NULL, 25),
 (213, 1, 'A', 40, 0, NULL, 26),
+(214, 1, 'A', 40, 0, NULL, 25),
 (214, 1, 'A', 40, 0, NULL, 26),
+(215, 1, 'A', 40, 0, NULL, 25),
 (215, 1, 'A', 40, 0, NULL, 26),
+(216, 1, 'A', 40, 0, NULL, 25),
 (216, 1, 'A', 40, 0, NULL, 26),
+(217, 1, 'A', 40, 0, NULL, 25),
 (217, 1, 'A', 40, 0, NULL, 26),
+(218, 1, 'A', 40, 0, NULL, 25),
 (218, 1, 'A', 40, 0, NULL, 26),
+(219, 1, 'A', 40, 0, NULL, 25),
 (219, 1, 'A', 40, 0, NULL, 26),
+(220, 1, 'A', 40, 0, NULL, 25),
 (220, 1, 'A', 40, 0, NULL, 26),
+(221, 1, 'A', 40, 0, NULL, 25),
 (221, 1, 'A', 40, 0, NULL, 26),
+(222, 1, 'A', 40, 0, NULL, 25),
 (222, 1, 'A', 40, 0, NULL, 26),
+(223, 1, 'A', 40, 0, NULL, 25),
 (223, 1, 'A', 40, 0, NULL, 26),
+(224, 1, 'A', 40, 0, NULL, 25),
 (224, 1, 'A', 40, 0, NULL, 26),
+(225, 1, 'A', 40, 0, NULL, 25),
 (225, 1, 'A', 40, 0, NULL, 26),
+(226, 1, 'A', 40, 0, NULL, 25),
 (226, 1, 'A', 40, 0, NULL, 26),
+(227, 1, 'A', 40, 0, NULL, 25),
 (227, 1, 'A', 40, 0, NULL, 26),
+(228, 1, 'A', 40, 0, NULL, 25),
 (228, 1, 'A', 40, 0, NULL, 26),
+(229, 1, 'A', 40, 0, NULL, 25),
 (229, 1, 'A', 40, 0, NULL, 26),
+(230, 1, 'A', 40, 0, NULL, 25),
 (230, 1, 'A', 40, 0, NULL, 26),
+(231, 1, 'A', 40, 0, NULL, 25),
 (231, 1, 'A', 40, 0, NULL, 26),
+(232, 1, 'A', 40, 0, NULL, 25),
 (232, 1, 'A', 40, 0, NULL, 26),
+(233, 1, 'A', 40, 0, NULL, 25),
 (233, 1, 'A', 40, 0, NULL, 26),
+(234, 1, 'A', 40, 0, NULL, 25),
 (234, 1, 'A', 40, 0, NULL, 26),
+(235, 1, 'A', 40, 0, NULL, 25),
 (235, 1, 'A', 40, 0, NULL, 26),
+(236, 1, 'A', 40, 0, NULL, 25),
 (236, 1, 'A', 40, 0, NULL, 26),
+(237, 1, 'A', 40, 0, NULL, 25),
 (237, 1, 'A', 40, 0, NULL, 26),
+(238, 1, 'A', 40, 0, NULL, 25),
 (238, 1, 'A', 40, 0, NULL, 26),
+(239, 1, 'A', 40, 0, NULL, 25),
 (239, 1, 'A', 40, 0, NULL, 26),
+(240, 1, 'A', 40, 0, NULL, 25),
 (240, 1, 'A', 40, 0, NULL, 26),
+(241, 1, 'A', 40, 0, NULL, 25),
 (241, 1, 'A', 40, 0, NULL, 26),
+(242, 1, 'A', 40, 0, NULL, 25),
 (242, 1, 'A', 40, 0, NULL, 26),
+(243, 1, 'A', 40, 0, NULL, 25),
 (243, 1, 'A', 40, 0, NULL, 26),
+(244, 1, 'A', 40, 0, NULL, 25),
 (244, 1, 'A', 40, 0, NULL, 26),
+(245, 1, 'A', 40, 0, NULL, 25),
 (245, 1, 'A', 40, 0, NULL, 26),
+(246, 1, 'A', 40, 0, NULL, 25),
 (246, 1, 'A', 40, 0, NULL, 26),
+(247, 1, 'A', 40, 0, NULL, 25),
 (247, 1, 'A', 40, 0, NULL, 26),
+(248, 1, 'A', 40, 0, NULL, 25),
 (248, 1, 'A', 40, 0, NULL, 26),
+(249, 1, 'A', 40, 0, NULL, 25),
 (249, 1, 'A', 40, 0, NULL, 26),
+(250, 1, 'A', 40, 0, NULL, 25),
 (250, 1, 'A', 40, 0, NULL, 26),
+(251, 1, 'A', 40, 0, NULL, 25),
 (251, 1, 'A', 40, 0, NULL, 26),
+(252, 1, 'A', 40, 0, NULL, 25),
 (252, 1, 'A', 40, 0, NULL, 26),
+(253, 1, 'A', 40, 0, NULL, 25),
 (253, 1, 'A', 40, 0, NULL, 26),
+(254, 1, 'A', 40, 0, NULL, 25),
 (254, 1, 'A', 40, 0, NULL, 26),
+(255, 1, 'A', 40, 0, NULL, 25),
 (255, 1, 'A', 40, 0, NULL, 26),
+(256, 1, 'A', 40, 0, NULL, 25),
 (256, 1, 'A', 40, 0, NULL, 26),
+(257, 1, 'A', 40, 0, NULL, 25),
 (257, 1, 'A', 40, 0, NULL, 26),
+(258, 1, 'A', 40, 0, NULL, 25),
 (258, 1, 'A', 40, 0, NULL, 26),
+(259, 1, 'A', 40, 0, NULL, 25),
 (259, 1, 'A', 40, 0, NULL, 26),
+(260, 1, 'A', 40, 0, NULL, 25),
 (260, 1, 'A', 40, 0, NULL, 26),
+(261, 1, 'A', 40, 0, NULL, 25),
 (261, 1, 'A', 40, 0, NULL, 26),
+(262, 1, 'A', 40, 0, NULL, 25),
 (262, 1, 'A', 40, 0, NULL, 26),
+(263, 1, 'A', 40, 0, NULL, 25),
 (263, 1, 'A', 40, 0, NULL, 26),
+(264, 1, 'A', 40, 0, NULL, 25),
 (264, 1, 'A', 40, 0, NULL, 26),
+(265, 1, 'A', 40, 0, NULL, 25),
 (265, 1, 'A', 40, 0, NULL, 26),
+(266, 1, 'A', 40, 0, NULL, 25),
 (266, 1, 'A', 40, 0, NULL, 26),
+(267, 1, 'A', 40, 0, NULL, 25),
 (267, 1, 'A', 40, 0, NULL, 26),
+(268, 1, 'A', 40, 0, NULL, 25),
 (268, 1, 'A', 40, 0, NULL, 26),
+(269, 1, 'A', 40, 0, NULL, 25),
 (269, 1, 'A', 40, 0, NULL, 26),
+(270, 1, 'A', 40, 0, NULL, 25),
 (270, 1, 'A', 40, 0, NULL, 26),
+(271, 1, 'A', 40, 0, NULL, 25),
 (271, 1, 'A', 40, 0, NULL, 26),
+(272, 1, 'A', 40, 0, NULL, 25),
 (272, 1, 'A', 40, 0, NULL, 26),
+(273, 1, 'A', 40, 0, NULL, 25),
 (273, 1, 'A', 40, 0, NULL, 26),
+(274, 1, 'A', 40, 0, NULL, 25),
 (274, 1, 'A', 40, 0, NULL, 26),
+(275, 1, 'A', 40, 0, NULL, 25),
 (275, 1, 'A', 40, 0, NULL, 26),
+(276, 1, 'A', 40, 0, NULL, 25),
 (276, 1, 'A', 40, 0, NULL, 26),
+(277, 1, 'A', 40, 0, NULL, 25),
 (277, 1, 'A', 40, 0, NULL, 26),
+(278, 1, 'A', 40, 0, NULL, 25),
 (278, 1, 'A', 40, 0, NULL, 26),
+(279, 1, 'A', 40, 0, NULL, 25),
 (279, 1, 'A', 40, 0, NULL, 26),
+(280, 1, 'A', 40, 0, NULL, 25),
 (280, 1, 'A', 40, 0, NULL, 26),
+(281, 1, 'A', 40, 0, NULL, 25),
 (281, 1, 'A', 40, 0, NULL, 26),
+(282, 1, 'A', 40, 0, NULL, 25),
 (282, 1, 'A', 40, 0, NULL, 26),
+(283, 1, 'A', 40, 0, NULL, 25),
 (283, 1, 'A', 40, 0, NULL, 26),
+(284, 1, 'A', 40, 0, NULL, 25),
 (284, 1, 'A', 40, 0, NULL, 26),
+(285, 1, 'A', 40, 0, NULL, 25),
 (285, 1, 'A', 40, 0, NULL, 26),
+(286, 1, 'A', 40, 0, NULL, 25),
 (286, 1, 'A', 40, 0, NULL, 26),
+(287, 1, 'A', 40, 0, NULL, 25),
 (287, 1, 'A', 40, 0, NULL, 26),
+(288, 1, 'A', 40, 0, NULL, 25),
 (288, 1, 'A', 40, 0, NULL, 26),
+(289, 1, 'A', 40, 0, NULL, 25),
 (289, 1, 'A', 40, 0, NULL, 26),
+(290, 1, 'A', 40, 0, NULL, 25),
 (290, 1, 'A', 40, 0, NULL, 26),
+(291, 1, 'A', 40, 0, NULL, 25),
 (291, 1, 'A', 40, 0, NULL, 26),
+(292, 1, 'A', 40, 0, NULL, 25),
 (292, 1, 'A', 40, 0, NULL, 26),
+(293, 1, 'A', 40, 0, NULL, 25),
 (293, 1, 'A', 40, 0, NULL, 26),
+(294, 1, 'A', 40, 0, NULL, 25),
 (294, 1, 'A', 40, 0, NULL, 26),
+(295, 1, 'A', 40, 0, NULL, 25),
 (295, 1, 'A', 40, 0, NULL, 26),
+(296, 1, 'A', 40, 0, NULL, 25),
 (296, 1, 'A', 40, 0, NULL, 26),
+(297, 1, 'A', 40, 0, NULL, 25),
 (297, 1, 'A', 40, 0, NULL, 26),
+(298, 1, 'A', 40, 0, NULL, 25),
 (298, 1, 'A', 40, 0, NULL, 26),
+(299, 1, 'A', 40, 0, NULL, 25),
 (299, 1, 'A', 40, 0, NULL, 26),
+(300, 1, 'A', 40, 0, NULL, 25),
 (300, 1, 'A', 40, 0, NULL, 26),
+(301, 1, 'A', 40, 0, NULL, 25),
 (301, 1, 'A', 40, 0, NULL, 26),
+(302, 1, 'A', 40, 0, NULL, 25),
 (302, 1, 'A', 40, 0, NULL, 26),
+(303, 1, 'A', 40, 0, NULL, 25),
 (303, 1, 'A', 40, 0, NULL, 26),
+(304, 1, 'A', 40, 0, NULL, 25),
 (304, 1, 'A', 40, 0, NULL, 26),
+(305, 1, 'A', 40, 0, NULL, 25),
 (305, 1, 'A', 40, 0, NULL, 26),
+(306, 1, 'A', 40, 0, NULL, 25),
 (306, 1, 'A', 40, 0, NULL, 26),
+(307, 1, 'A', 40, 0, NULL, 25),
 (307, 1, 'A', 40, 0, NULL, 26),
+(308, 1, 'A', 40, 0, NULL, 25),
 (308, 1, 'A', 40, 0, NULL, 26),
+(309, 1, 'A', 40, 0, NULL, 25),
 (309, 1, 'A', 40, 0, NULL, 26);
 
 --
@@ -4174,10 +4784,10 @@ CREATE TABLE `persona` (
 --
 
 INSERT INTO `persona` (`id_persona`, `ci`, `nombres`, `apellidos`, `fecha_nac`, `sexo`, `email`, `estado`) VALUES
-(1, '4832015LP', 'Carlos Andrés', 'Mendoza Quispe', '1985-03-15', 'M', 'cmendoza@fcpn.edu.bo', 'Activo'),
-(2, '5978842LP', 'María Elena', 'Condori Mamani', '1988-07-22', 'F', 'mcondori@fcpn.edu.bo', 'Activo'),
-(3, '6123456LP', 'Jorge Luis', 'Flores Ticona', '1986-11-08', 'M', 'jflores@fcpn.edu.bo', 'Activo'),
-(4, '5214789LP', 'Gabriela', 'Arancibia Rojas', '1987-05-30', 'F', 'garancibia@fcpn.edu.bo', 'Activo'),
+(1, '4832015LP', 'Carlos', 'Mendoza Quispe', '1985-03-15', 'M', 'cmendoza@fcpn.edu.bo', 'Activo'),
+(2, '5978842LP', 'Manuel Ramiro', 'Condori Mamani', '1988-07-22', 'F', 'mcondori@fcpn.edu.bo', 'Activo'),
+(3, '6123456LP', 'Francisco', 'Flores Ticona', '1986-11-08', 'M', 'jflores@fcpn.edu.bo', 'Activo'),
+(4, '5214789LP', 'Luis Alejandro', 'Arancibia Rojas', '1987-05-30', 'F', 'garancibia@fcpn.edu.bo', 'Activo'),
 (5, '6459871LP', 'Roberto', 'Limachi Vargas', '1984-09-14', 'M', 'rlimachi@fcpn.edu.bo', 'Activo'),
 (6, '5896321LP', 'Patricia', 'Gutiérrez Choque', '1989-01-25', 'F', 'pgutierrez@fcpn.edu.bo', 'Activo'),
 (7, '3451289LP', 'Francisco', 'Mamani Apaza', '1975-04-12', 'M', 'fmamani@fcpn.edu.bo', 'Activo'),
@@ -6497,6 +7107,957 @@ CREATE TABLE `se_cursa` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Volcado de datos para la tabla `se_cursa`
+--
+
+INSERT INTO `se_cursa` (`id_materia`, `id_paralelo`, `id_aula`, `id_horario`) VALUES
+(1, 1, 34, 33),
+(1, 1, 34, 36),
+(1, 1, 34, 39),
+(1, 1, 34, 42),
+(1, 1, 34, 45),
+(2, 1, 31, 32),
+(2, 1, 31, 35),
+(2, 1, 31, 38),
+(2, 1, 31, 41),
+(2, 1, 31, 44),
+(3, 1, 44, 33),
+(3, 1, 44, 36),
+(3, 1, 44, 39),
+(3, 1, 44, 42),
+(3, 1, 44, 45),
+(4, 1, 62, 33),
+(4, 1, 62, 36),
+(4, 1, 62, 39),
+(4, 1, 62, 42),
+(4, 1, 62, 45),
+(5, 1, 41, 31),
+(5, 1, 41, 34),
+(5, 1, 41, 37),
+(5, 1, 41, 40),
+(5, 1, 41, 43),
+(6, 1, 35, 31),
+(6, 1, 35, 34),
+(6, 1, 35, 37),
+(6, 1, 35, 40),
+(6, 1, 35, 43),
+(7, 1, 3, 31),
+(7, 1, 3, 34),
+(7, 1, 3, 37),
+(7, 1, 3, 40),
+(7, 1, 3, 43),
+(8, 1, 56, 33),
+(8, 1, 56, 36),
+(8, 1, 56, 39),
+(8, 1, 56, 42),
+(8, 1, 56, 45),
+(9, 1, 63, 32),
+(9, 1, 63, 35),
+(9, 1, 63, 38),
+(9, 1, 63, 41),
+(9, 1, 63, 44),
+(10, 1, 56, 31),
+(10, 1, 56, 34),
+(10, 1, 56, 37),
+(10, 1, 56, 40),
+(10, 1, 56, 43),
+(11, 1, 21, 32),
+(11, 1, 21, 35),
+(11, 1, 21, 38),
+(11, 1, 21, 41),
+(11, 1, 21, 44),
+(12, 1, 58, 32),
+(12, 1, 58, 35),
+(12, 1, 58, 38),
+(12, 1, 58, 41),
+(12, 1, 58, 44),
+(13, 1, 7, 32),
+(13, 1, 7, 35),
+(13, 1, 7, 38),
+(13, 1, 7, 41),
+(13, 1, 7, 44),
+(14, 1, 33, 32),
+(14, 1, 33, 35),
+(14, 1, 33, 38),
+(14, 1, 33, 41),
+(14, 1, 33, 44),
+(15, 1, 22, 32),
+(15, 1, 22, 35),
+(15, 1, 22, 38),
+(15, 1, 22, 41),
+(15, 1, 22, 44),
+(16, 1, 6, 33),
+(16, 1, 6, 36),
+(16, 1, 6, 39),
+(16, 1, 6, 42),
+(16, 1, 6, 45),
+(17, 1, 39, 33),
+(17, 1, 39, 36),
+(17, 1, 39, 39),
+(17, 1, 39, 42),
+(17, 1, 39, 45),
+(18, 1, 55, 31),
+(18, 1, 55, 34),
+(18, 1, 55, 37),
+(18, 1, 55, 40),
+(18, 1, 55, 43),
+(19, 1, 40, 31),
+(19, 1, 40, 34),
+(19, 1, 40, 37),
+(19, 1, 40, 40),
+(19, 1, 40, 43),
+(20, 1, 55, 33),
+(20, 1, 55, 36),
+(20, 1, 55, 39),
+(20, 1, 55, 42),
+(20, 1, 55, 45),
+(21, 1, 49, 31),
+(21, 1, 49, 34),
+(21, 1, 49, 37),
+(21, 1, 49, 40),
+(21, 1, 49, 43),
+(22, 1, 27, 32),
+(22, 1, 27, 35),
+(22, 1, 27, 38),
+(22, 1, 27, 41),
+(22, 1, 27, 44),
+(23, 1, 21, 31),
+(23, 1, 21, 34),
+(23, 1, 21, 37),
+(23, 1, 21, 40),
+(23, 1, 21, 43),
+(24, 1, 1, 32),
+(24, 1, 1, 35),
+(24, 1, 1, 38),
+(24, 1, 1, 41),
+(24, 1, 1, 44),
+(25, 1, 29, 33),
+(25, 1, 29, 36),
+(25, 1, 29, 39),
+(25, 1, 29, 42),
+(25, 1, 29, 45),
+(26, 1, 13, 31),
+(26, 1, 13, 34),
+(26, 1, 13, 37),
+(26, 1, 13, 40),
+(26, 1, 13, 43),
+(27, 1, 34, 32),
+(27, 1, 34, 35),
+(27, 1, 34, 38),
+(27, 1, 34, 41),
+(27, 1, 34, 44),
+(28, 1, 61, 31),
+(28, 1, 61, 34),
+(28, 1, 61, 37),
+(28, 1, 61, 40),
+(28, 1, 61, 43),
+(29, 1, 48, 33),
+(29, 1, 48, 36),
+(29, 1, 48, 39),
+(29, 1, 48, 42),
+(29, 1, 48, 45),
+(30, 1, 16, 32),
+(30, 1, 16, 35),
+(30, 1, 16, 38),
+(30, 1, 16, 41),
+(30, 1, 16, 44),
+(31, 1, 19, 33),
+(31, 1, 19, 36),
+(31, 1, 19, 39),
+(31, 1, 19, 42),
+(31, 1, 19, 45),
+(32, 1, 37, 31),
+(32, 1, 37, 34),
+(32, 1, 37, 37),
+(32, 1, 37, 40),
+(32, 1, 37, 43),
+(33, 1, 54, 31),
+(33, 1, 54, 34),
+(33, 1, 54, 37),
+(33, 1, 54, 40),
+(33, 1, 54, 43),
+(34, 1, 37, 33),
+(34, 1, 37, 36),
+(34, 1, 37, 39),
+(34, 1, 37, 42),
+(34, 1, 37, 45),
+(35, 1, 40, 33),
+(35, 1, 40, 36),
+(35, 1, 40, 39),
+(35, 1, 40, 42),
+(35, 1, 40, 45),
+(36, 1, 30, 32),
+(36, 1, 30, 35),
+(36, 1, 30, 38),
+(36, 1, 30, 41),
+(36, 1, 30, 44),
+(37, 1, 51, 31),
+(37, 1, 51, 34),
+(37, 1, 51, 37),
+(37, 1, 51, 40),
+(37, 1, 51, 43),
+(38, 1, 63, 31),
+(38, 1, 63, 34),
+(38, 1, 63, 37),
+(38, 1, 63, 40),
+(38, 1, 63, 43),
+(39, 1, 44, 31),
+(39, 1, 44, 34),
+(39, 1, 44, 37),
+(39, 1, 44, 40),
+(39, 1, 44, 43),
+(40, 1, 49, 33),
+(40, 1, 49, 36),
+(40, 1, 49, 39),
+(40, 1, 49, 42),
+(40, 1, 49, 45),
+(41, 1, 35, 32),
+(41, 1, 35, 35),
+(41, 1, 35, 38),
+(41, 1, 35, 41),
+(41, 1, 35, 44),
+(42, 1, 10, 33),
+(42, 1, 10, 36),
+(42, 1, 10, 39),
+(42, 1, 10, 42),
+(42, 1, 10, 45),
+(43, 1, 32, 32),
+(43, 1, 32, 35),
+(43, 1, 32, 38),
+(43, 1, 32, 41),
+(43, 1, 32, 44),
+(44, 1, 16, 31),
+(44, 1, 16, 34),
+(44, 1, 16, 37),
+(44, 1, 16, 40),
+(44, 1, 16, 43),
+(45, 1, 27, 31),
+(45, 1, 27, 34),
+(45, 1, 27, 37),
+(45, 1, 27, 40),
+(45, 1, 27, 43),
+(46, 1, 15, 32),
+(46, 1, 15, 35),
+(46, 1, 15, 38),
+(46, 1, 15, 41),
+(46, 1, 15, 44),
+(47, 1, 33, 31),
+(47, 1, 33, 34),
+(47, 1, 33, 37),
+(47, 1, 33, 40),
+(47, 1, 33, 43),
+(48, 1, 32, 31),
+(48, 1, 32, 34),
+(48, 1, 32, 37),
+(48, 1, 32, 40),
+(48, 1, 32, 43),
+(49, 1, 48, 31),
+(49, 1, 48, 34),
+(49, 1, 48, 37),
+(49, 1, 48, 40),
+(49, 1, 48, 43),
+(50, 1, 48, 32),
+(50, 1, 48, 35),
+(50, 1, 48, 38),
+(50, 1, 48, 41),
+(50, 1, 48, 44),
+(51, 1, 50, 32),
+(51, 1, 50, 35),
+(51, 1, 50, 38),
+(51, 1, 50, 41),
+(51, 1, 50, 44),
+(52, 1, 11, 32),
+(52, 1, 11, 35),
+(52, 1, 11, 38),
+(52, 1, 11, 41),
+(52, 1, 11, 44),
+(53, 1, 41, 33),
+(53, 1, 41, 36),
+(53, 1, 41, 39),
+(53, 1, 41, 42),
+(53, 1, 41, 45),
+(54, 1, 5, 33),
+(54, 1, 5, 36),
+(54, 1, 5, 39),
+(54, 1, 5, 42),
+(54, 1, 5, 45),
+(55, 1, 58, 31),
+(55, 1, 58, 34),
+(55, 1, 58, 37),
+(55, 1, 58, 40),
+(55, 1, 58, 43),
+(56, 1, 6, 31),
+(56, 1, 6, 34),
+(56, 1, 6, 37),
+(56, 1, 6, 40),
+(56, 1, 6, 43),
+(57, 1, 49, 32),
+(57, 1, 49, 35),
+(57, 1, 49, 38),
+(57, 1, 49, 41),
+(57, 1, 49, 44),
+(58, 1, 26, 31),
+(58, 1, 26, 34),
+(58, 1, 26, 37),
+(58, 1, 26, 40),
+(58, 1, 26, 43),
+(59, 1, 12, 33),
+(59, 1, 12, 36),
+(59, 1, 12, 39),
+(59, 1, 12, 42),
+(59, 1, 12, 45),
+(60, 1, 17, 33),
+(60, 1, 17, 36),
+(60, 1, 17, 39),
+(60, 1, 17, 42),
+(60, 1, 17, 45),
+(61, 1, 8, 33),
+(61, 1, 8, 36),
+(61, 1, 8, 39),
+(61, 1, 8, 42),
+(61, 1, 8, 45),
+(62, 1, 11, 31),
+(62, 1, 11, 34),
+(62, 1, 11, 37),
+(62, 1, 11, 40),
+(62, 1, 11, 43),
+(63, 1, 3, 32),
+(63, 1, 3, 35),
+(63, 1, 3, 38),
+(63, 1, 3, 41),
+(63, 1, 3, 44),
+(64, 1, 5, 31),
+(64, 1, 5, 34),
+(64, 1, 5, 37),
+(64, 1, 5, 40),
+(64, 1, 5, 43),
+(65, 1, 52, 33),
+(65, 1, 52, 36),
+(65, 1, 52, 39),
+(65, 1, 52, 42),
+(65, 1, 52, 45),
+(66, 1, 39, 31),
+(66, 1, 39, 34),
+(66, 1, 39, 37),
+(66, 1, 39, 40),
+(66, 1, 39, 43),
+(67, 1, 43, 31),
+(67, 1, 43, 34),
+(67, 1, 43, 37),
+(67, 1, 43, 40),
+(67, 1, 43, 43),
+(68, 1, 47, 32),
+(68, 1, 47, 35),
+(68, 1, 47, 38),
+(68, 1, 47, 41),
+(68, 1, 47, 44),
+(69, 1, 19, 31),
+(69, 1, 19, 34),
+(69, 1, 19, 37),
+(69, 1, 19, 40),
+(69, 1, 19, 43),
+(70, 1, 42, 32),
+(70, 1, 42, 35),
+(70, 1, 42, 38),
+(70, 1, 42, 41),
+(70, 1, 42, 44),
+(71, 1, 20, 32),
+(71, 1, 20, 35),
+(71, 1, 20, 38),
+(71, 1, 20, 41),
+(71, 1, 20, 44),
+(72, 1, 16, 33),
+(72, 1, 16, 36),
+(72, 1, 16, 39),
+(72, 1, 16, 42),
+(72, 1, 16, 45),
+(73, 1, 58, 33),
+(73, 1, 58, 36),
+(73, 1, 58, 39),
+(73, 1, 58, 42),
+(73, 1, 58, 45),
+(74, 1, 53, 31),
+(74, 1, 53, 34),
+(74, 1, 53, 37),
+(74, 1, 53, 40),
+(74, 1, 53, 43),
+(75, 1, 22, 31),
+(75, 1, 22, 34),
+(75, 1, 22, 37),
+(75, 1, 22, 40),
+(75, 1, 22, 43),
+(76, 1, 24, 32),
+(76, 1, 24, 35),
+(76, 1, 24, 38),
+(76, 1, 24, 41),
+(76, 1, 24, 44),
+(77, 1, 34, 31),
+(77, 1, 34, 34),
+(77, 1, 34, 37),
+(77, 1, 34, 40),
+(77, 1, 34, 43),
+(78, 1, 15, 33),
+(78, 1, 15, 36),
+(78, 1, 15, 39),
+(78, 1, 15, 42),
+(78, 1, 15, 45),
+(79, 1, 24, 31),
+(79, 1, 24, 34),
+(79, 1, 24, 37),
+(79, 1, 24, 40),
+(79, 1, 24, 43),
+(80, 1, 59, 32),
+(80, 1, 59, 35),
+(80, 1, 59, 38),
+(80, 1, 59, 41),
+(80, 1, 59, 44),
+(81, 1, 23, 32),
+(81, 1, 23, 35),
+(81, 1, 23, 38),
+(81, 1, 23, 41),
+(81, 1, 23, 44),
+(82, 1, 25, 31),
+(82, 1, 25, 34),
+(82, 1, 25, 37),
+(82, 1, 25, 40),
+(82, 1, 25, 43),
+(83, 1, 29, 32),
+(83, 1, 29, 35),
+(83, 1, 29, 38),
+(83, 1, 29, 41),
+(83, 1, 29, 44),
+(84, 1, 46, 31),
+(84, 1, 46, 34),
+(84, 1, 46, 37),
+(84, 1, 46, 40),
+(84, 1, 46, 43),
+(85, 1, 40, 32),
+(85, 1, 40, 35),
+(85, 1, 40, 38),
+(85, 1, 40, 41),
+(85, 1, 40, 44),
+(86, 1, 13, 32),
+(86, 1, 13, 35),
+(86, 1, 13, 38),
+(86, 1, 13, 41),
+(86, 1, 13, 44),
+(87, 1, 46, 32),
+(87, 1, 46, 35),
+(87, 1, 46, 38),
+(87, 1, 46, 41),
+(87, 1, 46, 44),
+(88, 1, 2, 33),
+(88, 1, 2, 36),
+(88, 1, 2, 39),
+(88, 1, 2, 42),
+(88, 1, 2, 45),
+(89, 1, 59, 33),
+(89, 1, 59, 36),
+(89, 1, 59, 39),
+(89, 1, 59, 42),
+(89, 1, 59, 45),
+(90, 1, 41, 32),
+(90, 1, 41, 35),
+(90, 1, 41, 38),
+(90, 1, 41, 41),
+(90, 1, 41, 44),
+(91, 1, 10, 31),
+(91, 1, 10, 34),
+(91, 1, 10, 37),
+(91, 1, 10, 40),
+(91, 1, 10, 43),
+(92, 1, 45, 32),
+(92, 1, 45, 35),
+(92, 1, 45, 38),
+(92, 1, 45, 41),
+(92, 1, 45, 44),
+(93, 1, 32, 33),
+(93, 1, 32, 36),
+(93, 1, 32, 39),
+(93, 1, 32, 42),
+(93, 1, 32, 45),
+(94, 1, 54, 32),
+(94, 1, 54, 35),
+(94, 1, 54, 38),
+(94, 1, 54, 41),
+(94, 1, 54, 44),
+(95, 1, 45, 31),
+(95, 1, 45, 34),
+(95, 1, 45, 37),
+(95, 1, 45, 40),
+(95, 1, 45, 43),
+(96, 1, 30, 33),
+(96, 1, 30, 36),
+(96, 1, 30, 39),
+(96, 1, 30, 42),
+(96, 1, 30, 45),
+(97, 1, 62, 32),
+(97, 1, 62, 35),
+(97, 1, 62, 38),
+(97, 1, 62, 41),
+(97, 1, 62, 44),
+(98, 1, 50, 31),
+(98, 1, 50, 34),
+(98, 1, 50, 37),
+(98, 1, 50, 40),
+(98, 1, 50, 43),
+(99, 1, 12, 32),
+(99, 1, 12, 35),
+(99, 1, 12, 38),
+(99, 1, 12, 41),
+(99, 1, 12, 44),
+(100, 1, 30, 31),
+(100, 1, 30, 34),
+(100, 1, 30, 37),
+(100, 1, 30, 40),
+(100, 1, 30, 43),
+(101, 1, 53, 33),
+(101, 1, 53, 36),
+(101, 1, 53, 39),
+(101, 1, 53, 42),
+(101, 1, 53, 45),
+(102, 1, 36, 31),
+(102, 1, 36, 34),
+(102, 1, 36, 37),
+(102, 1, 36, 40),
+(102, 1, 36, 43),
+(103, 1, 60, 31),
+(103, 1, 60, 34),
+(103, 1, 60, 37),
+(103, 1, 60, 40),
+(103, 1, 60, 43),
+(104, 1, 51, 32),
+(104, 1, 51, 35),
+(104, 1, 51, 38),
+(104, 1, 51, 41),
+(104, 1, 51, 44),
+(105, 1, 27, 33),
+(105, 1, 27, 36),
+(105, 1, 27, 39),
+(105, 1, 27, 42),
+(105, 1, 27, 45),
+(106, 1, 10, 32),
+(106, 1, 10, 35),
+(106, 1, 10, 38),
+(106, 1, 10, 41),
+(106, 1, 10, 44),
+(107, 1, 9, 33),
+(107, 1, 9, 36),
+(107, 1, 9, 39),
+(107, 1, 9, 42),
+(107, 1, 9, 45),
+(108, 1, 46, 33),
+(108, 1, 46, 36),
+(108, 1, 46, 39),
+(108, 1, 46, 42),
+(108, 1, 46, 45),
+(109, 1, 14, 31),
+(109, 1, 14, 34),
+(109, 1, 14, 37),
+(109, 1, 14, 40),
+(109, 1, 14, 43),
+(110, 1, 53, 32),
+(110, 1, 53, 35),
+(110, 1, 53, 38),
+(110, 1, 53, 41),
+(110, 1, 53, 44),
+(111, 1, 18, 32),
+(111, 1, 18, 35),
+(111, 1, 18, 38),
+(111, 1, 18, 41),
+(111, 1, 18, 44),
+(112, 1, 5, 32),
+(112, 1, 5, 35),
+(112, 1, 5, 38),
+(112, 1, 5, 41),
+(112, 1, 5, 44),
+(113, 1, 20, 33),
+(113, 1, 20, 36),
+(113, 1, 20, 39),
+(113, 1, 20, 42),
+(113, 1, 20, 45),
+(114, 1, 36, 32),
+(114, 1, 36, 35),
+(114, 1, 36, 38),
+(114, 1, 36, 41),
+(114, 1, 36, 44),
+(115, 1, 6, 32),
+(115, 1, 6, 35),
+(115, 1, 6, 38),
+(115, 1, 6, 41),
+(115, 1, 6, 44),
+(116, 1, 18, 33),
+(116, 1, 18, 36),
+(116, 1, 18, 39),
+(116, 1, 18, 42),
+(116, 1, 18, 45),
+(117, 1, 20, 31),
+(117, 1, 20, 34),
+(117, 1, 20, 37),
+(117, 1, 20, 40),
+(117, 1, 20, 43),
+(118, 1, 35, 33),
+(118, 1, 35, 36),
+(118, 1, 35, 39),
+(118, 1, 35, 42),
+(118, 1, 35, 45),
+(119, 1, 23, 31),
+(119, 1, 23, 34),
+(119, 1, 23, 37),
+(119, 1, 23, 40),
+(119, 1, 23, 43),
+(120, 1, 38, 32),
+(120, 1, 38, 35),
+(120, 1, 38, 38),
+(120, 1, 38, 41),
+(120, 1, 38, 44),
+(121, 1, 13, 33),
+(121, 1, 13, 36),
+(121, 1, 13, 39),
+(121, 1, 13, 42),
+(121, 1, 13, 45),
+(122, 1, 57, 32),
+(122, 1, 57, 35),
+(122, 1, 57, 38),
+(122, 1, 57, 41),
+(122, 1, 57, 44),
+(123, 1, 60, 33),
+(123, 1, 60, 36),
+(123, 1, 60, 39),
+(123, 1, 60, 42),
+(123, 1, 60, 45),
+(124, 1, 28, 32),
+(124, 1, 28, 35),
+(124, 1, 28, 38),
+(124, 1, 28, 41),
+(124, 1, 28, 44),
+(125, 1, 55, 32),
+(125, 1, 55, 35),
+(125, 1, 55, 38),
+(125, 1, 55, 41),
+(125, 1, 55, 44),
+(126, 1, 37, 32),
+(126, 1, 37, 35),
+(126, 1, 37, 38),
+(126, 1, 37, 41),
+(126, 1, 37, 44),
+(127, 1, 14, 33),
+(127, 1, 14, 36),
+(127, 1, 14, 39),
+(127, 1, 14, 42),
+(127, 1, 14, 45),
+(128, 1, 9, 32),
+(128, 1, 9, 35),
+(128, 1, 9, 38),
+(128, 1, 9, 41),
+(128, 1, 9, 44),
+(129, 1, 52, 31),
+(129, 1, 52, 34),
+(129, 1, 52, 37),
+(129, 1, 52, 40),
+(129, 1, 52, 43),
+(130, 1, 12, 31),
+(130, 1, 12, 34),
+(130, 1, 12, 37),
+(130, 1, 12, 40),
+(130, 1, 12, 43),
+(131, 1, 51, 33),
+(131, 1, 51, 36),
+(131, 1, 51, 39),
+(131, 1, 51, 42),
+(131, 1, 51, 45),
+(132, 1, 1, 33),
+(132, 1, 1, 36),
+(132, 1, 1, 39),
+(132, 1, 1, 42),
+(132, 1, 1, 45),
+(133, 1, 42, 31),
+(133, 1, 42, 34),
+(133, 1, 42, 37),
+(133, 1, 42, 40),
+(133, 1, 42, 43),
+(134, 1, 43, 32),
+(134, 1, 43, 35),
+(134, 1, 43, 38),
+(134, 1, 43, 41),
+(134, 1, 43, 44),
+(135, 1, 2, 31),
+(135, 1, 2, 34),
+(135, 1, 2, 37),
+(135, 1, 2, 40),
+(135, 1, 2, 43),
+(136, 1, 21, 33),
+(136, 1, 21, 36),
+(136, 1, 21, 39),
+(136, 1, 21, 42),
+(136, 1, 21, 45),
+(137, 1, 31, 33),
+(137, 1, 31, 36),
+(137, 1, 31, 39),
+(137, 1, 31, 42),
+(137, 1, 31, 45),
+(138, 1, 42, 33),
+(138, 1, 42, 36),
+(138, 1, 42, 39),
+(138, 1, 42, 42),
+(138, 1, 42, 45),
+(139, 1, 63, 33),
+(139, 1, 63, 36),
+(139, 1, 63, 39),
+(139, 1, 63, 42),
+(139, 1, 63, 45),
+(140, 1, 4, 33),
+(140, 1, 4, 36),
+(140, 1, 4, 39),
+(140, 1, 4, 42),
+(140, 1, 4, 45),
+(141, 1, 2, 32),
+(141, 1, 2, 35),
+(141, 1, 2, 38),
+(141, 1, 2, 41),
+(141, 1, 2, 44),
+(142, 1, 44, 32),
+(142, 1, 44, 35),
+(142, 1, 44, 38),
+(142, 1, 44, 41),
+(142, 1, 44, 44),
+(143, 1, 26, 33),
+(143, 1, 26, 36),
+(143, 1, 26, 39),
+(143, 1, 26, 42),
+(143, 1, 26, 45),
+(144, 1, 29, 31),
+(144, 1, 29, 34),
+(144, 1, 29, 37),
+(144, 1, 29, 40),
+(144, 1, 29, 43),
+(145, 1, 1, 31),
+(145, 1, 1, 34),
+(145, 1, 1, 37),
+(145, 1, 1, 40),
+(145, 1, 1, 43),
+(146, 1, 31, 31),
+(146, 1, 31, 34),
+(146, 1, 31, 37),
+(146, 1, 31, 40),
+(146, 1, 31, 43),
+(147, 1, 17, 31),
+(147, 1, 17, 34),
+(147, 1, 17, 37),
+(147, 1, 17, 40),
+(147, 1, 17, 43),
+(148, 1, 7, 31),
+(148, 1, 7, 34),
+(148, 1, 7, 37),
+(148, 1, 7, 40),
+(148, 1, 7, 43),
+(149, 1, 26, 32),
+(149, 1, 26, 35),
+(149, 1, 26, 38),
+(149, 1, 26, 41),
+(149, 1, 26, 44),
+(150, 1, 7, 33),
+(150, 1, 7, 36),
+(150, 1, 7, 39),
+(150, 1, 7, 42),
+(150, 1, 7, 45),
+(151, 1, 8, 32),
+(151, 1, 8, 35),
+(151, 1, 8, 38),
+(151, 1, 8, 41),
+(151, 1, 8, 44),
+(152, 1, 3, 33),
+(152, 1, 3, 36),
+(152, 1, 3, 39),
+(152, 1, 3, 42),
+(152, 1, 3, 45),
+(153, 1, 45, 33),
+(153, 1, 45, 36),
+(153, 1, 45, 39),
+(153, 1, 45, 42),
+(153, 1, 45, 45),
+(154, 1, 57, 31),
+(154, 1, 57, 34),
+(154, 1, 57, 37),
+(154, 1, 57, 40),
+(154, 1, 57, 43),
+(155, 1, 47, 33),
+(155, 1, 47, 36),
+(155, 1, 47, 39),
+(155, 1, 47, 42),
+(155, 1, 47, 45),
+(156, 1, 52, 32),
+(156, 1, 52, 35),
+(156, 1, 52, 38),
+(156, 1, 52, 41),
+(156, 1, 52, 44),
+(157, 1, 28, 33),
+(157, 1, 28, 36),
+(157, 1, 28, 39),
+(157, 1, 28, 42),
+(157, 1, 28, 45),
+(158, 1, 38, 33),
+(158, 1, 38, 36),
+(158, 1, 38, 39),
+(158, 1, 38, 42),
+(158, 1, 38, 45),
+(159, 1, 17, 32),
+(159, 1, 17, 35),
+(159, 1, 17, 38),
+(159, 1, 17, 41),
+(159, 1, 17, 44),
+(160, 1, 36, 33),
+(160, 1, 36, 36),
+(160, 1, 36, 39),
+(160, 1, 36, 42),
+(160, 1, 36, 45),
+(161, 1, 11, 33),
+(161, 1, 11, 36),
+(161, 1, 11, 39),
+(161, 1, 11, 42),
+(161, 1, 11, 45),
+(162, 1, 54, 33),
+(162, 1, 54, 36),
+(162, 1, 54, 39),
+(162, 1, 54, 42),
+(162, 1, 54, 45),
+(163, 1, 39, 32),
+(163, 1, 39, 35),
+(163, 1, 39, 38),
+(163, 1, 39, 41),
+(163, 1, 39, 44),
+(164, 1, 23, 33),
+(164, 1, 23, 36),
+(164, 1, 23, 39),
+(164, 1, 23, 42),
+(164, 1, 23, 45),
+(165, 1, 62, 31),
+(165, 1, 62, 34),
+(165, 1, 62, 37),
+(165, 1, 62, 40),
+(165, 1, 62, 43),
+(166, 1, 18, 31),
+(166, 1, 18, 34),
+(166, 1, 18, 37),
+(166, 1, 18, 40),
+(166, 1, 18, 43),
+(167, 1, 28, 31),
+(167, 1, 28, 34),
+(167, 1, 28, 37),
+(167, 1, 28, 40),
+(167, 1, 28, 43),
+(168, 1, 25, 32),
+(168, 1, 25, 35),
+(168, 1, 25, 38),
+(168, 1, 25, 41),
+(168, 1, 25, 44),
+(169, 1, 61, 32),
+(169, 1, 61, 35),
+(169, 1, 61, 38),
+(169, 1, 61, 41),
+(169, 1, 61, 44),
+(170, 1, 4, 31),
+(170, 1, 4, 34),
+(170, 1, 4, 37),
+(170, 1, 4, 40),
+(170, 1, 4, 43),
+(171, 1, 57, 33),
+(171, 1, 57, 36),
+(171, 1, 57, 39),
+(171, 1, 57, 42),
+(171, 1, 57, 45),
+(172, 1, 43, 33),
+(172, 1, 43, 36),
+(172, 1, 43, 39),
+(172, 1, 43, 42),
+(172, 1, 43, 45),
+(173, 1, 25, 33),
+(173, 1, 25, 36),
+(173, 1, 25, 39),
+(173, 1, 25, 42),
+(173, 1, 25, 45),
+(174, 1, 24, 33),
+(174, 1, 24, 36),
+(174, 1, 24, 39),
+(174, 1, 24, 42),
+(174, 1, 24, 45),
+(175, 1, 56, 32),
+(175, 1, 56, 35),
+(175, 1, 56, 38),
+(175, 1, 56, 41),
+(175, 1, 56, 44),
+(176, 1, 9, 31),
+(176, 1, 9, 34),
+(176, 1, 9, 37),
+(176, 1, 9, 40),
+(176, 1, 9, 43),
+(177, 1, 15, 31),
+(177, 1, 15, 34),
+(177, 1, 15, 37),
+(177, 1, 15, 40),
+(177, 1, 15, 43),
+(178, 1, 61, 33),
+(178, 1, 61, 36),
+(178, 1, 61, 39),
+(178, 1, 61, 42),
+(178, 1, 61, 45),
+(179, 1, 4, 32),
+(179, 1, 4, 35),
+(179, 1, 4, 38),
+(179, 1, 4, 41),
+(179, 1, 4, 44),
+(180, 1, 47, 31),
+(180, 1, 47, 34),
+(180, 1, 47, 37),
+(180, 1, 47, 40),
+(180, 1, 47, 43),
+(181, 1, 60, 32),
+(181, 1, 60, 35),
+(181, 1, 60, 38),
+(181, 1, 60, 41),
+(181, 1, 60, 44),
+(182, 1, 8, 31),
+(182, 1, 8, 34),
+(182, 1, 8, 37),
+(182, 1, 8, 40),
+(182, 1, 8, 43),
+(183, 1, 22, 33),
+(183, 1, 22, 36),
+(183, 1, 22, 39),
+(183, 1, 22, 42),
+(183, 1, 22, 45),
+(184, 1, 50, 33),
+(184, 1, 50, 36),
+(184, 1, 50, 39),
+(184, 1, 50, 42),
+(184, 1, 50, 45),
+(185, 1, 59, 31),
+(185, 1, 59, 34),
+(185, 1, 59, 37),
+(185, 1, 59, 40),
+(185, 1, 59, 43),
+(186, 1, 19, 32),
+(186, 1, 19, 35),
+(186, 1, 19, 38),
+(186, 1, 19, 41),
+(186, 1, 19, 44),
+(187, 1, 33, 33),
+(187, 1, 33, 36),
+(187, 1, 33, 39),
+(187, 1, 33, 42),
+(187, 1, 33, 45),
+(188, 1, 38, 31),
+(188, 1, 38, 34),
+(188, 1, 38, 37),
+(188, 1, 38, 40),
+(188, 1, 38, 43),
+(189, 1, 14, 32),
+(189, 1, 14, 35),
+(189, 1, 14, 38),
+(189, 1, 14, 41),
+(189, 1, 14, 44);
+
+--
 -- Disparadores `se_cursa`
 --
 DELIMITER $$
@@ -7269,7 +8830,7 @@ ALTER TABLE `usuario`
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2054;
+  MODIFY `id_auditoria` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2117;
 
 --
 -- AUTO_INCREMENT de la tabla `aula`
@@ -7287,19 +8848,19 @@ ALTER TABLE `carrera`
 -- AUTO_INCREMENT de la tabla `criterio_evaluacion`
 --
 ALTER TABLE `criterio_evaluacion`
-  MODIFY `id_criterio` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_criterio` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT de la tabla `detalle_inscripcion`
 --
 ALTER TABLE `detalle_inscripcion`
-  MODIFY `id_detalle` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_detalle` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=516;
 
 --
 -- AUTO_INCREMENT de la tabla `gestion`
 --
 ALTER TABLE `gestion`
-  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
+  MODIFY `id_gestion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
 
 --
 -- AUTO_INCREMENT de la tabla `horario`
@@ -7311,7 +8872,7 @@ ALTER TABLE `horario`
 -- AUTO_INCREMENT de la tabla `inscripcion`
 --
 ALTER TABLE `inscripcion`
-  MODIFY `id_inscripcion` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_inscripcion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=104;
 
 --
 -- AUTO_INCREMENT de la tabla `materia`
@@ -7323,7 +8884,7 @@ ALTER TABLE `materia`
 -- AUTO_INCREMENT de la tabla `nota`
 --
 ALTER TABLE `nota`
-  MODIFY `id_nota` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_nota` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1014;
 
 --
 -- AUTO_INCREMENT de la tabla `persona`
