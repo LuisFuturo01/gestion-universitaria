@@ -26,11 +26,65 @@ export const eliminar = async (id_gestion) => {
     return result;
 };
 
-// Cierre de gestión — usa sp_preview_cierre_gestion (devuelve 2 result sets: resumen + detalle)
 export const previewCierre = async (id_gestion) => {
-    const [rows] = await pool.query('CALL sp_preview_cierre_gestion(?)', [id_gestion]);
-    // rows[0] = resumen (1 fila), rows[1] = detalle por estudiante
-    return { resumen: rows[0]?.[0] || {}, detalle: rows[1] || [] };
+    try {
+        const [rowsFallback] = await pool.query(`
+            SELECT 
+                CONCAT(p.nombres, ' ', p.apellidos) AS estudiante,
+                COALESCE(e.ru, CONCAT('RU-', p.id_persona)) AS ru,
+                m.sigla AS sigla_materia,
+                m.nombre AS materia,
+                di.id_materia,
+                di.id_paralelo,
+                di.id_detalle,
+                COALESCE(di.nota_final, 0) AS nota_final_db,
+                di.estado AS estado_db
+            FROM detalle_inscripcion di
+            JOIN inscripcion i ON di.id_inscripcion = i.id_inscripcion
+            JOIN persona p ON i.id_estudiante = p.id_persona
+            LEFT JOIN estudiante e ON p.id_persona = e.id_persona
+            JOIN materia m ON di.id_materia = m.id_materia
+            WHERE i.id_gestion = ?
+              AND di.estado NOT IN ('Retirado', 'Abandono')
+            ORDER BY p.apellidos, p.nombres
+        `, [id_gestion]);
+
+        const [criterios] = await pool.query('SELECT id_criterio, id_materia, id_paralelo, ponderacion FROM criterio_evaluacion');
+        const [notas] = await pool.query('SELECT id_detalle, id_criterio, nota_obtenida FROM nota');
+
+        const detalle = rowsFallback.map(row => {
+            const critMat = criterios.filter(c => Number(c.id_materia) === Number(row.id_materia) && Number(c.id_paralelo) === Number(row.id_paralelo));
+            let notaCalculada = 0;
+            if (critMat.length > 0) {
+                critMat.forEach(c => {
+                    const nObj = notas.find(n => Number(n.id_detalle) === Number(row.id_detalle) && Number(n.id_criterio) === Number(c.id_criterio));
+                    if (nObj) notaCalculada += Number(nObj.nota_obtenida || 0);
+                });
+            }
+            const notaFinal = Number(row.nota_final_db) > 0 ? Number(row.nota_final_db) : Math.round(notaCalculada * 100) / 100;
+            const estadoProyectado = notaFinal >= 51 ? 'Aprobado' : 'Reprobado';
+
+            return {
+                estudiante: row.estudiante,
+                ru: row.ru,
+                sigla_materia: row.sigla_materia,
+                materia: row.materia,
+                nota_final_proyectada: notaFinal,
+                estado_proyectado: estadoProyectado
+            };
+        });
+
+        const aprobados = detalle.filter(d => d.estado_proyectado === 'Aprobado').length;
+        const reprobados = detalle.length - aprobados;
+
+        return {
+            resumen: { total: detalle.length, aprobados, reprobados },
+            detalle
+        };
+    } catch (e) {
+        console.error('[PREVIEW CIERRE ERROR]:', e.message);
+        return { resumen: { total: 0, aprobados: 0, reprobados: 0 }, detalle: [] };
+    }
 };
 
 // Cierre de gestión — usa sp_cerrar_gestion (transacción definitiva)

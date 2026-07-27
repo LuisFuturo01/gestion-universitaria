@@ -20,32 +20,68 @@ export default function ReportsPage() {
   const gestionActiva = data.getGestionActiva();
 
   const cargaDocente = useMemo(() => {
-    return data.docentes.map((d) => {
-      const persona = data.getPersona(d.id_persona);
-      const paralelosDocente = data.paralelos.filter((p) => p.id_docente === d.id_persona && p.id_gestion === gestionActiva?.id_gestion);
-      const totalEstudiantes = paralelosDocente.reduce((acc, p) => acc + (p.cupo_actual || 0), 0);
-      return { nombre: `${persona.nombres} ${persona.apellidos}`, grado: d.grado_academico || "Lic.", paralelos: paralelosDocente.length || 1, totalEstudiantes: totalEstudiantes || 15 };
+    return (data.docentes || []).map((d) => {
+      const persona = data.getPersona(d.id_persona) || { nombres: "Docente", apellidos: `#${d.id_persona}` };
+      const paralelosDocente = (data.paralelos || []).filter(
+        (p) => Number(p.id_docente) === Number(d.id_persona) && (!gestionActiva || Number(p.id_gestion) === Number(gestionActiva.id_gestion))
+      );
+      
+      const totalEstudiantes = paralelosDocente.reduce((acc, p) => {
+        const inscritos = (data.detalle || []).filter(
+          (det) => Number(det.id_materia) === Number(p.id_materia) && Number(det.id_paralelo) === Number(p.id_paralelo) && det.estado !== "Retirado" && det.estado !== "Abandono"
+        ).length;
+        return acc + (inscritos || p.cupo_actual || 0);
+      }, 0);
+
+      return {
+        nombre: `${persona.nombres || ''} ${persona.apellidos || ''}`.trim() || `Docente ${d.id_persona}`,
+        grado: d.grado_academico || "Lic.",
+        paralelos: paralelosDocente.length,
+        totalEstudiantes
+      };
     });
   }, [data, gestionActiva]);
 
   const rendimiento = useMemo(() => {
-    return data.materias.map((m) => {
-      const registros = data.detalle.filter((d) => d.id_materia === m.id_materia);
-      const aprobados = registros.filter((r) => r.estado === "Aprobado").length;
-      const reprobados = registros.filter((r) => r.estado === "Reprobado").length;
-      const cursando = registros.filter((r) => r.estado === "Inscrito").length;
-      const total = aprobados + reprobados;
-      const porcentaje = total > 0 ? Math.round((aprobados / total) * 100) : 85;
-      return { materia: `${m.sigla}`, aprobados: aprobados || 12, reprobados: reprobados || 2, cursando: cursando || 5, porcentaje };
+    return (data.materias || []).map((m) => {
+      const registros = (data.detalle || []).filter((d) => Number(d.id_materia) === Number(m.id_materia) && d.estado !== "Retirado" && d.estado !== "Abandono");
+      let aprobados = 0;
+      let reprobados = 0;
+      let cursando = 0;
+
+      registros.forEach((r) => {
+        const nota = data.calcularNotaFinal(r.id_materia, r.id_paralelo, r.id_detalle);
+        if (nota >= 51) {
+          aprobados++;
+        } else if (nota > 0) {
+          reprobados++;
+        } else {
+          cursando++;
+        }
+      });
+
+      const evaluados = aprobados + reprobados;
+      const porcentaje = evaluados > 0 ? Math.round((aprobados / evaluados) * 100) : (aprobados > 0 ? 100 : 0);
+
+      return {
+        materia: m.sigla || `MAT-${m.id_materia}`,
+        nombreCompleto: m.nombre,
+        aprobados,
+        reprobados,
+        cursando,
+        porcentaje
+      };
     });
   }, [data]);
 
   const distribucionUsuarios = useMemo(() => {
+    const totalEst = (data.estudiantes || []).length || (data.personas || []).length || 1;
+    const totalDoc = (data.docentes || []).length || 1;
     return [
       { name: "Administradores", value: 1 },
       { name: "Directores", value: 1 },
-      { name: "Docentes", value: data.docentes.length || 2 },
-      { name: "Estudiantes", value: data.estudiantes.length || 4 },
+      { name: "Docentes", value: totalDoc },
+      { name: "Estudiantes", value: totalEst },
     ];
   }, [data]);
 

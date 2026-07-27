@@ -542,6 +542,7 @@ function VistaSupervisor({ data }) {
                   <tbody>
                     {inscritos.map(({ detalle: d, persona }) => {
                       const notaFinalVal = data.calcularNotaFinal(idMateria, p.id_paralelo, d.id_detalle);
+                      const estadoReal = notaFinalVal >= 51 ? "Aprobado" : (d.estado === "Inscrito" && notaFinalVal === 0 ? "Inscrito" : "Reprobado");
                       return (
                         <tr key={d.id_detalle}>
                           <td><strong>{persona ? `${persona.nombres} ${persona.apellidos}` : `Estudiante #${d.id_inscripcion}`}</strong></td>
@@ -555,7 +556,11 @@ function VistaSupervisor({ data }) {
                           <td>
                             <strong>{notaFinalVal} pts</strong>
                           </td>
-                          <td><Badge>{d.estado}</Badge></td>
+                          <td>
+                            <span className={`badge ${estadoReal === "Aprobado" ? "badge-success" : estadoReal === "Inscrito" ? "badge-info" : "badge-danger"}`}>
+                              {estadoReal}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
