@@ -24,42 +24,50 @@ export const obtUsuarioPorID = async (req, res) => {
 
 export const insertaUsuario = async (req, res) => {
     try {
-        await check("username")
-            .notEmpty()
-            .withMessage("El username es obligatorio")
-            .run(req);
+        const { username, password, id_persona, id_rol, idsRol, persona, nombres, apellidos, ci, fecha_nac, sexo } = req.body;
+        const rolId = id_rol || (Array.isArray(idsRol) ? idsRol[0] : 1);
 
-        await check("password")
-            .isLength({ min: 6 })
-            .withMessage("La contraseña debe tener al menos 6 caracteres")
-            .run(req);
+        const targetNombres = (persona?.nombres || nombres || "").trim();
+        const targetApellidos = (persona?.apellidos || apellidos || "").trim();
+        const targetCi = (persona?.ci || ci || "").trim();
+        const targetFechaNac = persona?.fecha_nac || fecha_nac || "2000-01-01";
+        const targetSexo = persona?.sexo || sexo || "M";
 
-        await check("id_persona")
-            .isNumeric()
-            .withMessage("ID de persona inválido")
-            .run(req);
+        if (targetNombres && targetApellidos && targetCi) {
+            const [rows] = await pool.query(
+                "CALL sp_insertar_persona_usuario(?, ?, ?, ?, ?, ?, 'A')",
+                [targetCi, targetNombres, targetApellidos, targetFechaNac, targetSexo, rolId]
+            );
+            const creado = rows[0]?.[0] || rows[0] || {};
+            const usernameGenerado = creado.username || `${targetNombres.charAt(0).toLowerCase()}${targetApellidos.split(' ')[0].toLowerCase()}`;
+            const emailGenerado = creado.email || `${usernameGenerado}@fcpn.edu.bo`;
 
-        const errores = validationResult(req);
-
-        if (!errores.isEmpty()) {
-            return res.status(400).json({
-                mensaje: errores.array()
+            return res.status(201).json({
+                ok: true,
+                username: usernameGenerado,
+                email: emailGenerado,
+                id_persona: creado.id_persona,
+                password_temp: "123456"
             });
         }
 
-        const { username, password, id_persona, id_rol, idsRol } = req.body;
-        const password_hash = await bcrypt.hash(password, 10);
-        const rolId = id_rol || (Array.isArray(idsRol) ? idsRol[0] : 1);
+        const passToUse = password || "123456";
+        const password_hash = await bcrypt.hash(passToUse, 10);
+        const userToInsert = username || `${targetNombres.charAt(0).toLowerCase()}${targetApellidos.split(' ')[0].toLowerCase()}`;
 
         const usuarioNuevo = await inserta({
-            username,
+            username: userToInsert,
             password_hash,
             id_persona,
             id_rol: rolId
         });
 
-        res.status(201).json(usuarioNuevo);
+        res.status(201).json({
+            ...usuarioNuevo,
+            password_temp: "123456"
+        });
     } catch (error) {
+        console.error("[INSERTAR USUARIO CONTROLLER ERROR]:", error.message);
         res.status(500).json({ error: error.message });
     }
 };

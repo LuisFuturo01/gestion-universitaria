@@ -23,6 +23,24 @@ export const extraerMensajeError = (error) => {
   return "No se pudo completar la solicitud. Verifique los datos o intente nuevamente.";
 };
 
+apiClient.interceptors.request.use(
+  (config) => {
+    try {
+      const raw = sessionStorage.getItem("sau_session");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.token) {
+          config.headers.Authorization = `Bearer ${parsed.token}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Error leyendo token de sessionStorage:", e);
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {

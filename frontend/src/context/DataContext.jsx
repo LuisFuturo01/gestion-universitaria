@@ -421,9 +421,19 @@ export function DataProvider({ children }) {
 
   // ---------- Mutaciones asíncronas conectadas con la API REST de MySQL ----------
 
-  const crearUsuario = async (usuarioNuevo, personaNueva, idsRol) => {
-    await usersService.create({ usuario: usuarioNuevo, persona: personaNueva, idsRol, id_rol: idsRol?.[0] || 1 });
+  const crearUsuario = async (personaNueva, idsRol) => {
+    const res = await usersService.create({
+      persona: personaNueva,
+      nombres: personaNueva?.nombres,
+      apellidos: personaNueva?.apellidos,
+      ci: personaNueva?.ci,
+      fecha_nac: personaNueva?.fecha_nac,
+      sexo: personaNueva?.sexo,
+      idsRol,
+      id_rol: idsRol?.[0] || 1
+    });
     await reloadFromBackend();
+    return res.data;
   };
 
   const toggleUsuarioActivo = async (id_usuario) => {

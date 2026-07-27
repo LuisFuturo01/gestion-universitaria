@@ -25,58 +25,58 @@ DELIMITER $$
 --
 -- Procedimientos
 --
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_aula` (IN `p_id_aula` INT, IN `p_nombre` VARCHAR(50), IN `p_piso` VARCHAR(20), IN `p_ubicacion` VARCHAR(100), IN `p_capacidad` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_aula` (IN `p_id_aula` INT, IN `p_nombre` VARCHAR(50), IN `p_piso` VARCHAR(20), IN `p_ubicacion` VARCHAR(100), IN `p_capacidad` INT)   BEGIN
     UPDATE aula SET nombre = p_nombre, piso = p_piso, ubicacion = p_ubicacion, capacidad = p_capacidad WHERE id_aula = p_id_aula;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_carrera` (IN `p_id_carrera` INT, IN `p_nombre` VARCHAR(100))   BEGIN
+CREATE PROCEDURE `sp_actualizar_carrera` (IN `p_id_carrera` INT, IN `p_nombre` VARCHAR(100))   BEGIN
     UPDATE carrera SET nombre = p_nombre WHERE id_carrera = p_id_carrera;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_criterio` (IN `p_id_criterio` INT, IN `p_nombre` VARCHAR(50), IN `p_ponderacion` FLOAT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_criterio` (IN `p_id_criterio` INT, IN `p_nombre` VARCHAR(50), IN `p_ponderacion` FLOAT)   BEGIN
     UPDATE criterio_evaluacion SET nombre = p_nombre, ponderacion = p_ponderacion WHERE id_criterio = p_id_criterio;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_gestion` (IN `p_id_gestion` INT, IN `p_periodo` VARCHAR(20))   BEGIN
+CREATE PROCEDURE `sp_actualizar_gestion` (IN `p_id_gestion` INT, IN `p_periodo` VARCHAR(20))   BEGIN
     UPDATE gestion SET periodo = p_periodo WHERE id_gestion = p_id_gestion;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_horario` (IN `p_id_horario` INT, IN `p_dia` VARCHAR(15), IN `p_hora_inicio` TIME, IN `p_hora_fin` TIME)   BEGIN
+CREATE PROCEDURE `sp_actualizar_horario` (IN `p_id_horario` INT, IN `p_dia` VARCHAR(15), IN `p_hora_inicio` TIME, IN `p_hora_fin` TIME)   BEGIN
     UPDATE horario SET dia = p_dia, hora_inicio = p_hora_inicio, hora_fin = p_hora_fin WHERE id_horario = p_id_horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_materia` (IN `p_id` INT, IN `p_sigla` VARCHAR(15), IN `p_nombre` VARCHAR(100), IN `p_carga_horaria` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_materia` (IN `p_id` INT, IN `p_sigla` VARCHAR(15), IN `p_nombre` VARCHAR(100), IN `p_carga_horaria` INT)   BEGIN
     UPDATE materia SET sigla = p_sigla, nombre = p_nombre, carga_horaria = p_carga_horaria WHERE id_materia = p_id;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_nota` (IN `p_id_nota` INT, IN `p_puntaje` FLOAT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_nota` (IN `p_id_nota` INT, IN `p_puntaje` FLOAT)   BEGIN
     UPDATE nota SET nota_obtenida = p_puntaje WHERE id_nota = p_id_nota;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT)   BEGIN
     UPDATE paralelo
     SET nombre = p_nombre, cupo_maximo = p_cupo_maximo, id_docente = p_id_docente, id_gestion = p_id_gestion
     WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_plan_estudio` (IN `p_id_plan` INT, IN `p_nombre` VARCHAR(100), IN `p_id_carrera` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_plan_estudio` (IN `p_id_plan` INT, IN `p_nombre` VARCHAR(100), IN `p_id_carrera` INT)   BEGIN
     UPDATE plan_estudio SET nombre = p_nombre, id_carrera = p_id_carrera WHERE id_plan = p_id_plan;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_semestre` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_semestre` INT)   BEGIN
     UPDATE plan_materia SET semestre = p_semestre WHERE id_plan = p_id_plan AND id_materia = p_id_materia;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_old_req` INT, IN `p_new_req` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_old_req` INT, IN `p_new_req` INT)   BEGIN
     UPDATE prerequisito SET id_materia_req = p_new_req WHERE id_plan = p_id_plan AND id_materia = p_id_materia AND id_materia_req = p_old_req;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_actualizar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_old_aula` INT, IN `p_old_horario` INT, IN `p_new_aula` INT, IN `p_new_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_actualizar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_old_aula` INT, IN `p_old_horario` INT, IN `p_new_aula` INT, IN `p_new_horario` INT)   BEGIN
     UPDATE se_cursa SET id_aula = p_new_aula, id_horario = p_new_horario
     WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo AND id_aula = p_old_aula AND id_horario = p_old_horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_aperturar_paralelo_completo` (IN `p_id_materia` INT, IN `p_nombre_paralelo` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_aperturar_paralelo_completo` (IN `p_id_materia` INT, IN `p_nombre_paralelo` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
     DECLARE v_id_paralelo INT;
     
     -- Manejador de errores para revertir cambios si algo falla (ej. choques de horario)
@@ -107,7 +107,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_aperturar_paralelo_completo` (IN
     SELECT v_id_paralelo AS id_paralelo_generado;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_aulas_horarios_con_reintentos` (IN `p_id_gestion` INT, IN `p_max_intentos` INT)   BEGIN
+CREATE PROCEDURE `sp_asignar_aulas_horarios_con_reintentos` (IN `p_id_gestion` INT, IN `p_max_intentos` INT)   BEGIN
     DECLARE v_id_materia INT;
     DECLARE v_id_paralelo INT;
     DECLARE v_id_aula INT;
@@ -243,7 +243,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_aulas_horarios_con_reint
     
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_horarios_sin_choque` (IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_asignar_horarios_sin_choque` (IN `p_id_gestion` INT)   BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE v_id_materia INT;
     DECLARE v_id_paralelo INT;
@@ -357,7 +357,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_asignar_horarios_sin_choque` (IN
     CLOSE cur_paralelos;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestion` INT)   BEGIN
     DECLARE v_estado_gestion VARCHAR(20);
     DECLARE v_total_afectados INT DEFAULT 0;
     DECLARE v_aprobados INT DEFAULT 0;
@@ -439,108 +439,108 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_cerrar_gestion` (IN `p_id_gestio
 
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_aula` (IN `p_nombre` VARCHAR(50), IN `p_piso` VARCHAR(20), IN `p_ubicacion` VARCHAR(100), IN `p_capacidad` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_aula` (IN `p_nombre` VARCHAR(50), IN `p_piso` VARCHAR(20), IN `p_ubicacion` VARCHAR(100), IN `p_capacidad` INT)   BEGIN
     INSERT INTO aula (nombre, piso, ubicacion, capacidad) VALUES (p_nombre, p_piso, p_ubicacion, p_capacidad);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_carrera` (IN `p_nombre` VARCHAR(100))   BEGIN
+CREATE PROCEDURE `sp_crear_carrera` (IN `p_nombre` VARCHAR(100))   BEGIN
     INSERT INTO carrera (nombre) VALUES (p_nombre);
     SELECT LAST_INSERT_ID() AS id_carrera;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_criterio` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(50), IN `p_ponderacion` FLOAT)   BEGIN
+CREATE PROCEDURE `sp_crear_criterio` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(50), IN `p_ponderacion` FLOAT)   BEGIN
     INSERT INTO criterio_evaluacion (id_materia, id_paralelo, nombre, ponderacion) VALUES (p_id_materia, p_id_paralelo, p_nombre, p_ponderacion);
     SELECT LAST_INSERT_ID() AS id_criterio;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_gestion` (IN `p_periodo` VARCHAR(20))   BEGIN
+CREATE PROCEDURE `sp_crear_gestion` (IN `p_periodo` VARCHAR(20))   BEGIN
     INSERT INTO gestion (periodo) VALUES (p_periodo);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_horario` (IN `p_dia` VARCHAR(15), IN `p_hora_inicio` TIME, IN `p_hora_fin` TIME)   BEGIN
+CREATE PROCEDURE `sp_crear_horario` (IN `p_dia` VARCHAR(15), IN `p_hora_inicio` TIME, IN `p_hora_fin` TIME)   BEGIN
     INSERT INTO horario (dia, hora_inicio, hora_fin) VALUES (p_dia, p_hora_inicio, p_hora_fin);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_materia` (IN `p_sigla` VARCHAR(15), IN `p_nombre` VARCHAR(100), IN `p_carga_horaria` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_materia` (IN `p_sigla` VARCHAR(15), IN `p_nombre` VARCHAR(100), IN `p_carga_horaria` INT)   BEGIN
     INSERT INTO materia (sigla, nombre, carga_horaria) VALUES (p_sigla, p_nombre, p_carga_horaria);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_nota` (IN `p_id_detalle` INT, IN `p_id_criterio` INT, IN `p_puntaje` FLOAT)   BEGIN
+CREATE PROCEDURE `sp_crear_nota` (IN `p_id_detalle` INT, IN `p_id_criterio` INT, IN `p_puntaje` FLOAT)   BEGIN
     INSERT INTO nota (id_detalle, id_criterio, nota_obtenida) VALUES (p_id_detalle, p_id_criterio, p_puntaje);
     SELECT LAST_INSERT_ID() AS id_nota;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_nombre` VARCHAR(10), IN `p_cupo_maximo` INT, IN `p_id_docente` INT, IN `p_id_gestion` INT)   BEGIN
     INSERT INTO paralelo (id_materia, id_paralelo, nombre, cupo_maximo, id_docente, id_gestion)
     VALUES (p_id_materia, p_id_paralelo, p_nombre, p_cupo_maximo, p_id_docente, p_id_gestion);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_plan_estudio` (IN `p_nombre` VARCHAR(100), IN `p_id_carrera` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_plan_estudio` (IN `p_nombre` VARCHAR(100), IN `p_id_carrera` INT)   BEGIN
     INSERT INTO plan_estudio (nombre, id_carrera) VALUES (p_nombre, p_id_carrera);
     SELECT LAST_INSERT_ID() AS id_plan;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_semestre` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_semestre` INT)   BEGIN
     INSERT INTO plan_materia (id_plan, id_materia, semestre) VALUES (p_id_plan, p_id_materia, p_semestre);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_materia_req` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_materia_req` INT)   BEGIN
     INSERT INTO prerequisito (id_plan, id_materia, id_materia_req) VALUES (p_id_plan, p_id_materia, p_id_materia_req);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_crear_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_crear_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
     INSERT INTO se_cursa (id_materia, id_paralelo, id_aula, id_horario) VALUES (p_id_materia, p_id_paralelo, p_id_aula, p_id_horario);
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_aula` (IN `p_id_aula` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_aula` (IN `p_id_aula` INT)   BEGIN
     DELETE FROM aula WHERE id_aula = p_id_aula;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_carrera` (IN `p_id_carrera` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_carrera` (IN `p_id_carrera` INT)   BEGIN
     DELETE FROM carrera WHERE id_carrera = p_id_carrera;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_criterio` (IN `p_id_criterio` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_criterio` (IN `p_id_criterio` INT)   BEGIN
     DELETE FROM criterio_evaluacion WHERE id_criterio = p_id_criterio;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_gestion` (IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_gestion` (IN `p_id_gestion` INT)   BEGIN
     DELETE FROM gestion WHERE id_gestion = p_id_gestion;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_horario` (IN `p_id_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_horario` (IN `p_id_horario` INT)   BEGIN
     DELETE FROM horario WHERE id_horario = p_id_horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_materia` (IN `p_id` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_materia` (IN `p_id` INT)   BEGIN
     DELETE FROM materia WHERE id_materia = p_id;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_nota` (IN `p_id_nota` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_nota` (IN `p_id_nota` INT)   BEGIN
     DELETE FROM nota WHERE id_nota = p_id_nota;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
     DELETE FROM paralelo WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_plan_estudio` (IN `p_id_plan` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_plan_estudio` (IN `p_id_plan` INT)   BEGIN
     DELETE FROM plan_estudio WHERE id_plan = p_id_plan;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_plan_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT)   BEGIN
     DELETE FROM plan_materia WHERE id_plan = p_id_plan AND id_materia = p_id_materia;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_materia_req` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_prerequisito` (IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_materia_req` INT)   BEGIN
     DELETE FROM prerequisito WHERE id_plan = p_id_plan AND id_materia = p_id_materia AND id_materia_req = p_id_materia_req;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_eliminar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_eliminar_se_cursa` (IN `p_id_materia` INT, IN `p_id_paralelo` INT, IN `p_id_aula` INT, IN `p_id_horario` INT)   BEGIN
     DELETE FROM se_cursa WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo AND id_aula = p_id_aula AND id_horario = p_id_horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_plan` INT, IN `p_anio_ingreso` VARCHAR(20))   BEGIN
+CREATE PROCEDURE `sp_insertar_estudiante_completo` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_plan` INT, IN `p_anio_ingreso` VARCHAR(20))   BEGIN
     DECLARE v_id_persona INT;
     DECLARE v_username VARCHAR(50);
     DECLARE v_email VARCHAR(120);
@@ -591,7 +591,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo` (I
     END IF;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_plan` INT, IN `p_anio_ingreso` VARCHAR(20), IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
+CREATE PROCEDURE `sp_insertar_estudiante_completo_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_plan` INT, IN `p_anio_ingreso` VARCHAR(20), IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
     DECLARE v_id_persona INT;
     DECLARE v_username VARCHAR(50);
     DECLARE v_email VARCHAR(120);
@@ -640,7 +640,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_estudiante_completo_seg
     
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_estado` VARCHAR(20))   BEGIN
+CREATE PROCEDURE `sp_insertar_persona_usuario` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_estado` VARCHAR(20))   BEGIN
     DECLARE v_id_persona INT;
     DECLARE v_username VARCHAR(50);
     DECLARE v_email VARCHAR(120);
@@ -685,7 +685,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario` (IN `p
     SELECT v_id_persona AS id_persona, v_username AS username, v_email AS email, v_password AS password;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
+CREATE PROCEDURE `sp_insertar_persona_usuario_seguro` (IN `p_ci` VARCHAR(20), IN `p_nombres` VARCHAR(80), IN `p_apellidos` VARCHAR(80), IN `p_fecha_nac` DATE, IN `p_sexo` VARCHAR(1), IN `p_id_rol` INT, IN `p_password_hash` VARCHAR(255), IN `p_usuario_audit` INT)   BEGIN
     DECLARE v_id_persona INT;
     DECLARE v_username VARCHAR(50);
     DECLARE v_email VARCHAR(120);
@@ -725,55 +725,55 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_insertar_persona_usuario_seguro`
     
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_aulas` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_aulas` ()   BEGIN
     SELECT * FROM aula;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_aula_por_id` (IN `p_id_aula` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_aula_por_id` (IN `p_id_aula` INT)   BEGIN
     SELECT * FROM aula WHERE id_aula = p_id_aula;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_carreras` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_carreras` ()   BEGIN
     SELECT * FROM carrera;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_carrera_por_id` (IN `p_id_carrera` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_carrera_por_id` (IN `p_id_carrera` INT)   BEGIN
     SELECT * FROM carrera WHERE id_carrera = p_id_carrera;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_criterios_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_criterios_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
     SELECT * FROM criterio_evaluacion WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_gestiones` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_gestiones` ()   BEGIN
     SELECT * FROM gestion;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_horarios` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_horarios` ()   BEGIN
     SELECT * FROM horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_horario_por_id` (IN `p_id_horario` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_horario_por_id` (IN `p_id_horario` INT)   BEGIN
     SELECT * FROM horario WHERE id_horario = p_id_horario;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_materias` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_materias` ()   BEGIN
     SELECT * FROM materia;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_materias_por_plan` (IN `p_id_plan` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_materias_por_plan` (IN `p_id_plan` INT)   BEGIN
     SELECT * FROM plan_materia WHERE id_plan = p_id_plan;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_materia_por_id` (IN `p_id` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_materia_por_id` (IN `p_id` INT)   BEGIN
     SELECT * FROM materia WHERE id_materia = p_id;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_notas_detalle` (IN `p_id_detalle` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_notas_detalle` (IN `p_id_detalle` INT)   BEGIN
     SELECT * FROM nota WHERE id_detalle = p_id_detalle;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_paralelos` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_paralelos` ()   BEGIN
     SELECT 
         p.id_materia,
         p.id_paralelo,
@@ -806,35 +806,35 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_paralelos` ()   BEGIN
     FROM paralelo p;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_planes_estudio` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_planes_estudio` ()   BEGIN
     SELECT * FROM plan_estudio;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_plan_estudio_por_id` (IN `p_id_plan` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_plan_estudio_por_id` (IN `p_id_plan` INT)   BEGIN
     SELECT * FROM plan_estudio WHERE id_plan = p_id_plan;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_plan_materias` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_plan_materias` ()   BEGIN
     SELECT * FROM plan_materia;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_prerequisitos` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_prerequisitos` ()   BEGIN
     SELECT * FROM prerequisito;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_prerequisitos_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_prerequisitos_materia` (IN `p_id_plan` INT, IN `p_id_materia` INT)   BEGIN
     SELECT * FROM prerequisito WHERE id_plan = p_id_plan AND id_materia = p_id_materia;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_se_cursa` ()   BEGIN
+CREATE PROCEDURE `sp_obtener_se_cursa` ()   BEGIN
     SELECT * FROM se_cursa;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_obtener_se_cursa_por_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
+CREATE PROCEDURE `sp_obtener_se_cursa_por_paralelo` (IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
     SELECT * FROM se_cursa WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_preview_cierre_gestion` (IN `p_id_gestion` INT)   BEGIN
+CREATE PROCEDURE `sp_preview_cierre_gestion` (IN `p_id_gestion` INT)   BEGIN
     DECLARE v_total INT DEFAULT 0;
     DECLARE v_aprobados INT DEFAULT 0;
     DECLARE v_reprobados INT DEFAULT 0;
@@ -912,7 +912,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_preview_cierre_gestion` (IN `p_i
 
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_realizar_inscripcion` (IN `p_id_estudiante` INT, IN `p_id_gestion` INT, IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
+CREATE PROCEDURE `sp_realizar_inscripcion` (IN `p_id_estudiante` INT, IN `p_id_gestion` INT, IN `p_id_plan` INT, IN `p_id_materia` INT, IN `p_id_paralelo` INT)   BEGIN
     DECLARE v_id_inscripcion INT DEFAULT NULL;
     DECLARE v_cupo_max INT DEFAULT 35;
     DECLARE v_cupo_act INT DEFAULT 0;
@@ -967,7 +967,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_realizar_inscripcion` (IN `p_id_
     COMMIT;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_retirar_inscripcion` (IN `p_id_detalle` INT)   BEGIN
+CREATE PROCEDURE `sp_retirar_inscripcion` (IN `p_id_detalle` INT)   BEGIN
     DECLARE v_id_materia INT;
     DECLARE v_id_paralelo INT;
     DECLARE v_id_gestion INT;
@@ -1008,14 +1008,14 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_retirar_inscripcion` (IN `p_id_d
     COMMIT;
 END$$
 
-CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_set_audit_user` (IN `p_id_usuario` INT)   BEGIN
+CREATE PROCEDURE `sp_set_audit_user` (IN `p_id_usuario` INT)   BEGIN
     SET @current_user_id = p_id_usuario;
 END$$
 
 --
 -- Funciones
 --
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_aula_disponible` (`p_id_aula` INT, `p_id_horario` INT, `p_id_gestion` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_aula_disponible` (`p_id_aula` INT, `p_id_horario` INT, `p_id_gestion` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
     DECLARE v_count INT;
     SELECT COUNT(*) INTO v_count
     FROM se_cursa sc
@@ -1024,7 +1024,7 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_aula_disponible` (`p_id_aula` INT
     RETURN v_count = 0;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calcular_nota_final` (`p_id_detalle` INT) RETURNS FLOAT DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_calcular_nota_final` (`p_id_detalle` INT) RETURNS FLOAT DETERMINISTIC BEGIN
     DECLARE v_nota FLOAT;
     SELECT COALESCE(SUM(n.nota_obtenida * ce.ponderacion / 100), 0)
     INTO v_nota
@@ -1034,38 +1034,38 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_calcular_nota_final` (`p_id_detal
     RETURN v_nota;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_cupo_disponible` (`p_id_materia` INT, `p_id_paralelo` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_cupo_disponible` (`p_id_materia` INT, `p_id_paralelo` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_max INT;
 DECLARE v_actual INT;
 SELECT cupo_maximo, cupo_actual INTO v_max, v_actual FROM PARALELO WHERE id_materia = p_id_materia AND id_paralelo = p_id_paralelo;
 RETURN v_actual < v_max;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_existe_estudiante` (`p_id_estudiante` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_existe_estudiante` (`p_id_estudiante` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_existe INT;
 SELECT COUNT(*) INTO v_existe FROM ESTUDIANTE WHERE id_persona = p_id_estudiante;
 RETURN v_existe > 0;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_existe_gestion` (`p_id_gestion` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_existe_gestion` (`p_id_gestion` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_existe INT;
 SELECT COUNT(*) INTO v_existe FROM GESTION WHERE id_gestion=p_id_gestion;
 RETURN v_existe>0;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_existe_materia` (`p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_existe_materia` (`p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_existe INT;
 SELECT COUNT(*) INTO v_existe FROM MATERIA WHERE id_materia=p_id_materia;
 RETURN v_existe>0;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_existe_paralelo` (`p_id_materia` INT, `p_id_paralelo` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_existe_paralelo` (`p_id_materia` INT, `p_id_paralelo` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_existe INT;
 SELECT COUNT(*) INTO v_existe FROM PARALELO WHERE id_materia=p_id_materia AND id_paralelo=p_id_paralelo;
 RETURN v_existe>0;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_extraer_numero_ci` (`p_ci` VARCHAR(20)) RETURNS VARCHAR(20) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_extraer_numero_ci` (`p_ci` VARCHAR(20)) RETURNS VARCHAR(20) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
     DECLARE v_numero VARCHAR(20) DEFAULT '';
     DECLARE v_char CHAR(1);
     DECLARE v_len INT;
@@ -1087,7 +1087,7 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_extraer_numero_ci` (`p_ci` VARCHA
     RETURN v_numero;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_generar_email` (`p_username` VARCHAR(50)) RETURNS VARCHAR(120) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_generar_email` (`p_username` VARCHAR(50)) RETURNS VARCHAR(120) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
     DECLARE v_base VARCHAR(120);
     DECLARE v_final VARCHAR(120);
     DECLARE v_contador INT DEFAULT 0;
@@ -1108,7 +1108,7 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_generar_email` (`p_username` VARC
     RETURN v_final;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_generar_username` (`p_nombres` VARCHAR(80), `p_apellidos` VARCHAR(80)) RETURNS VARCHAR(50) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_generar_username` (`p_nombres` VARCHAR(80), `p_apellidos` VARCHAR(80)) RETURNS VARCHAR(50) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
     DECLARE v_inicial_nombre CHAR(1);
     DECLARE v_apellido_paterno VARCHAR(40);
     DECLARE v_inicial_materno CHAR(1);
@@ -1141,13 +1141,13 @@ CREATE DEFINER=`root`@`localhost` FUNCTION `fn_generar_username` (`p_nombres` VA
     RETURN v_final;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_nombre_completo` (`p_id_persona` INT) RETURNS VARCHAR(200) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_nombre_completo` (`p_id_persona` INT) RETURNS VARCHAR(200) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
     DECLARE v_nombre VARCHAR(200);
     SELECT CONCAT(nombres, ' ', apellidos) INTO v_nombre FROM persona WHERE id_persona = p_id_persona;
     RETURN v_nombre;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_tiene_prerrequisitos` (`p_id_estudiante` INT, `p_id_plan` INT, `p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_tiene_prerrequisitos` (`p_id_estudiante` INT, `p_id_plan` INT, `p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
 DECLARE v_total INT DEFAULT 0;
 DECLARE v_aprobadas INT DEFAULT 0;
 SELECT COUNT(*) INTO v_total FROM PREREQUISITO WHERE id_plan = p_id_plan AND id_materia = p_id_materia;
@@ -1158,7 +1158,7 @@ SELECT COUNT(*) INTO v_aprobadas FROM PREREQUISITO pr INNER JOIN DETALLE_INSCRIP
 RETURN v_total = v_aprobadas;
 END$$
 
-CREATE DEFINER=`root`@`localhost` FUNCTION `fn_ya_inscrito` (`p_id_estudiante` INT, `p_id_gestion` INT, `p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
+CREATE FUNCTION `fn_ya_inscrito` (`p_id_estudiante` INT, `p_id_gestion` INT, `p_id_materia` INT) RETURNS TINYINT(1) DETERMINISTIC BEGIN
     DECLARE v_existe INT DEFAULT 0;
     
     SELECT COUNT(*) INTO v_existe 

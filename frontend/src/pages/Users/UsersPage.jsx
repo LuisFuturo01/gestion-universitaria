@@ -5,7 +5,7 @@ import { useToast } from "../../context/ToastContext";
 import { SectionHeader, Badge, EmptyState } from "../../components/Common/Common";
 import { ROLE_KEYS } from "../../data/mockData";
 
-const emptyForm = { username: "", password: "", nombres: "", apellidos: "", ci: "", email: "", fecha_nac: "", sexo: "M", idsRol: [] };
+const emptyForm = { nombres: "", apellidos: "", ci: "", fecha_nac: "2000-01-01", sexo: "M", idsRol: [] };
 
 export default function UsersPage() {
   const { session } = useAuth();
@@ -17,6 +17,7 @@ export default function UsersPage() {
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [credencialesModal, setCredencialesModal] = useState(null);
 
   // Roles permitidos para creación según el perfil activo
   const rolesPermitidosParaCrear = data.roles.filter((r) => {
@@ -51,28 +52,40 @@ export default function UsersPage() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.username || !form.password || form.idsRol.length === 0) {
-      showWarning("Complete usuario, contraseña y al menos un rol permitido.");
+    if (!form.nombres || !form.apellidos || !form.ci || form.idsRol.length === 0) {
+      showWarning("Complete Nombres, Apellidos, CI y seleccione al menos un Rol.");
       return;
     }
 
-    data.crearUsuario(
-      { username: form.username, password: form.password, activo: true },
-      {
-        nombres: form.nombres,
-        apellidos: form.apellidos,
-        ci: form.ci,
-        email: form.email,
-        fecha_nac: form.fecha_nac || "2000-01-01",
-        sexo: form.sexo,
-      },
-      form.idsRol
-    );
-    showSuccess(`Usuario '${form.username}' registrado correctamente.`);
-    setForm(emptyForm);
-    setShowForm(false);
+    try {
+      const res = await data.crearUsuario(
+        {
+          nombres: form.nombres,
+          apellidos: form.apellidos,
+          ci: form.ci,
+          fecha_nac: form.fecha_nac || "2000-01-01",
+          sexo: form.sexo,
+        },
+        form.idsRol
+      );
+
+      const usernameGenerado = res?.username || `${form.nombres.charAt(0).toLowerCase()}${form.apellidos.split(' ')[0].toLowerCase()}`;
+
+      setCredencialesModal({
+        username: usernameGenerado,
+        password: "123456",
+        nombres: `${form.nombres} ${form.apellidos}`,
+        email: res?.email || `${usernameGenerado}@fcpn.edu.bo`
+      });
+
+      showSuccess(`Usuario '${usernameGenerado}' creado correctamente.`);
+      setForm(emptyForm);
+      setShowForm(false);
+    } catch (err) {
+      showError(`Error al crear el usuario: ${err.message}`);
+    }
   };
 
   const handleToggleEstado = (usuarioTarget) => {
@@ -143,42 +156,30 @@ export default function UsersPage() {
       {(esAdmin || esDirector) && showForm && (
         <form className="page-card form-grid" onSubmit={handleSubmit} style={{ marginBottom: 20 }}>
           <div className="field">
-            <label>Usuario</label>
-            <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-          </div>
-          <div className="field">
-            <label>Contraseña</label>
-            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          </div>
-          <div className="field">
             <label>Nombres</label>
-            <input value={form.nombres} onChange={(e) => setForm({ ...form, nombres: e.target.value })} required />
+            <input value={form.nombres} onChange={(e) => setForm({ ...form, nombres: e.target.value })} placeholder="Ej. Juan" required />
           </div>
           <div className="field">
             <label>Apellidos</label>
-            <input value={form.apellidos} onChange={(e) => setForm({ ...form, apellidos: e.target.value })} required />
+            <input value={form.apellidos} onChange={(e) => setForm({ ...form, apellidos: e.target.value })} placeholder="Ej. Pérez" required />
           </div>
           <div className="field">
             <label>Carnet de Identidad (CI)</label>
-            <input value={form.ci} onChange={(e) => setForm({ ...form, ci: e.target.value })} required />
-          </div>
-          <div className="field">
-            <label>Email</label>
-            <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+            <input value={form.ci} onChange={(e) => setForm({ ...form, ci: e.target.value })} placeholder="Ej. 8493021" required />
           </div>
           <div className="field">
             <label>Fecha de Nacimiento</label>
-            <input type="date" value={form.fecha_nac} onChange={(e) => setForm({ ...form, fecha_nac: e.target.value })} />
+            <input type="date" value={form.fecha_nac} onChange={(e) => setForm({ ...form, fecha_nac: e.target.value })} required />
           </div>
           <div className="field">
             <label>Sexo</label>
             <select value={form.sexo} onChange={(e) => setForm({ ...form, sexo: e.target.value })}>
-              <option value="M">M</option>
-              <option value="F">F</option>
+              <option value="M">Masculino (M)</option>
+              <option value="F">Femenino (F)</option>
             </select>
           </div>
           <div className="field field-wide">
-            <label>Roles Permitidos para Asignar</label>
+            <label>Rol a Asignar</label>
             <div className="checkbox-row">
               {rolesPermitidosParaCrear.map((r) => (
                 <label key={r.id_rol} className="checkbox-chip">
@@ -192,7 +193,7 @@ export default function UsersPage() {
               ))}
             </div>
           </div>
-          <button type="submit" className="primary-button field-wide">Guardar Usuario</button>
+          <button type="submit" className="primary-button field-wide">Generar y Crear Usuario en BD</button>
         </form>
       )}
 
@@ -258,6 +259,38 @@ export default function UsersPage() {
           </table>
         )}
       </div>
+
+      {/* Modal de Credenciales Generadas */}
+      {credencialesModal && (
+        <div className="modal-backdrop" onClick={() => setCredencialesModal(null)}>
+          <div className="modal-card" style={{ maxWidth: 520, width: "90%", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: "3rem", marginBottom: 8 }}>🎉</div>
+            <h3 style={{ margin: "0 0 8px 0", color: "#1e293b" }}>¡Usuario Creado Exitosamente!</h3>
+            <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: 20 }}>
+              El nombre de usuario y correo fueron generados automáticamente en MariaDB para <strong>{credencialesModal.nombres}</strong>.
+            </p>
+
+            <div style={{ background: "#f8fafc", padding: 16, borderRadius: 10, border: "1px dashed #cbd5e1", marginBottom: 20, textAlign: "left" }}>
+              <div style={{ marginBottom: 12 }}>
+                <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600, display: "block" }}>USUARIO (USERNAME):</span>
+                <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#2563eb" }}>{credencialesModal.username}</div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600, display: "block" }}>CONTRASEÑA TEMPORAL:</span>
+                <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#16a34a" }}>{credencialesModal.password}</div>
+              </div>
+              <div>
+                <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600, display: "block" }}>CORREO INSTITUCIONAL:</span>
+                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#334155" }}>{credencialesModal.email}</div>
+              </div>
+            </div>
+
+            <button className="primary-button" style={{ width: "100%", padding: "10px 0", fontSize: "1rem" }} onClick={() => setCredencialesModal(null)}>
+              Entendido / Cerrar Ventana
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

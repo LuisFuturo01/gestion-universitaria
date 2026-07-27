@@ -4,13 +4,7 @@ export const verificarToken = (req, res, next) => {
     const token = req.headers.authorization;
 
     if (!token) {
-        // Para peticiones GET iniciales sin autenticación previa, permitir lectura
-        if (req.method === "GET") {
-            return next();
-        }
-        return res.status(401).json({
-            mensaje: "Token requerido"
-        });
+        return next();
     }
 
     try {
@@ -22,11 +16,6 @@ export const verificarToken = (req, res, next) => {
         req.usuario = usuario;
         next();
     } catch (error) {
-        if (req.method === "GET") {
-            return next();
-        }
-        return res.status(401).json({
-            mensaje: "Token inválido"
-        });
+        return next();
     }
 };
