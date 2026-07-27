@@ -76,10 +76,28 @@ export const login = async (req, res) => {
         });
 
         let id_carrera = 1;
+        let id_plan = 1;
         try {
-            const [admRow] = await pool.query("SELECT id_carrera FROM administrativo WHERE id_persona = ?", [mainUser.id_persona]);
-            if (admRow && admRow.length > 0 && admRow[0].id_carrera) {
-                id_carrera = admRow[0].id_carrera;
+            // 1. Probar en director_carrera
+            const [dirRow] = await pool.query("SELECT id_carrera FROM director_carrera WHERE id_persona = ?", [mainUser.id_persona]);
+            if (dirRow && dirRow.length > 0 && dirRow[0].id_carrera) {
+                id_carrera = dirRow[0].id_carrera;
+            } else {
+                // 2. Probar en estudiante -> plan_estudio
+                const [estRow] = await pool.query(
+                    "SELECT e.id_plan, pe.id_carrera FROM estudiante e JOIN plan_estudio pe ON e.id_plan = pe.id_plan WHERE e.id_persona = ?",
+                    [mainUser.id_persona]
+                );
+                if (estRow && estRow.length > 0) {
+                    if (estRow[0].id_carrera) id_carrera = estRow[0].id_carrera;
+                    if (estRow[0].id_plan) id_plan = estRow[0].id_plan;
+                } else {
+                    // 3. Probar en administrativo
+                    const [admRow] = await pool.query("SELECT id_carrera FROM administrativo WHERE id_persona = ?", [mainUser.id_persona]);
+                    if (admRow && admRow.length > 0 && admRow[0].id_carrera) {
+                        id_carrera = admRow[0].id_carrera;
+                    }
+                }
             }
         } catch (e) {
             id_carrera = 1;
@@ -99,7 +117,8 @@ export const login = async (req, res) => {
         const token = jwt.sign(
             {
                 id_usuario: mainUser.id_usuario,
-                username: mainUser.username
+                username: mainUser.username,
+                roles: Array.from(new Set(rolesList))
             },
             "SISTEMA_ACADEMICO",
             {
@@ -118,6 +137,7 @@ export const login = async (req, res) => {
                 nombre_completo: `${mainUser.nombres} ${mainUser.apellidos}`.trim() || mainUser.username,
                 roles: Array.from(new Set(rolesList)),
                 id_carrera,
+                id_plan,
                 id_estudiante: mainUser.id_persona,
                 ru: `RU-${mainUser.id_persona}`,
                 id_docente: mainUser.id_persona

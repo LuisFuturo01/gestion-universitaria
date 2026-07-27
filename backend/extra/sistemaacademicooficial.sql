@@ -565,7 +565,7 @@ CREATE PROCEDURE `sp_insertar_estudiante_completo` (IN `p_ci` VARCHAR(20), IN `p
         -- Ahora es 100% seguro generar esto, nadie más lo está haciendo al mismo tiempo
         SET v_username = fn_generar_username(p_nombres, p_apellidos);
         SET v_email = fn_generar_email(v_username);
-        SET v_password = fn_extraer_numero_ci(p_ci);
+        SET v_password = '123456';
         
         INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
         VALUES (p_ci, p_nombres, p_apellidos, p_fecha_nac, p_sexo, v_email, 'Activo');
@@ -667,8 +667,8 @@ CREATE PROCEDURE `sp_insertar_persona_usuario` (IN `p_ci` VARCHAR(20), IN `p_nom
         SET v_email = CONCAT(v_username, '2@fcpn.edu.bo');
     END IF;
     
-    -- Generar password de la parte numérica del CI
-    SET v_password = fn_extraer_numero_ci(p_ci);
+    -- Generar password por defecto 123456
+    SET v_password = '123456';
     
     -- Insertar persona
     INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
@@ -679,6 +679,18 @@ CREATE PROCEDURE `sp_insertar_persona_usuario` (IN `p_ci` VARCHAR(20), IN `p_nom
     -- Insertar usuario con el mismo username que generó el email
     INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
     VALUES (v_username, v_password, v_id_persona, p_id_rol, p_estado);
+
+    -- Insertar en la tabla del rol si corresponde
+    IF p_id_rol = 4 THEN
+        INSERT IGNORE INTO estudiante (id_persona, ru, id_plan, anio_ingreso)
+        VALUES (v_id_persona, CONCAT('RU-', v_id_persona), 1, YEAR(CURDATE()));
+    ELSEIF p_id_rol = 3 THEN
+        INSERT IGNORE INTO docente (id_persona, registro_docente, grado_academico)
+        VALUES (v_id_persona, CONCAT('DOC-', v_id_persona), 'Lic.');
+    ELSEIF p_id_rol = 1 THEN
+        INSERT IGNORE INTO administrativo (id_persona, item, id_carrera)
+        VALUES (v_id_persona, CONCAT('ADM-', v_id_persona), 1);
+    END IF;
     
     COMMIT;
     
@@ -5273,18 +5285,24 @@ END
 $$
 DELIMITER ;
 DELIMITER $$
-CREATE TRIGGER `trg_auditoria_persona_insert` AFTER INSERT ON `persona` FOR EACH ROW BEGIN
+
+CREATE TRIGGER trg_auditoria_persona_insert
+AFTER INSERT ON persona
+FOR EACH ROW
+BEGIN
     INSERT INTO auditoria (id_usuario, tipo, accion, fecha, hora)
-    VALUES (
-        COALESCE(@current_user_id, 0),  -- Si es NULL, usar 0 (usuario sistema)
-        'INSERT', 
-        CONCAT('Nueva persona: ', NEW.nombres, ' ', NEW.apellidos, ' (CI: ', NEW.ci, ')'), 
-        CURDATE(), 
-        CURTIME()
-    );
-END
-$$
+VALUES (
+   @current_user_id,               
+   'INSERT',
+   CONCAT('Nueva persona: ', NEW.nombres, ' ', NEW.apellidos, ' (CI: ', NEW.ci, ')'),
+   CURDATE(),
+   CURTIME()
+);
+
+END$$
+
 DELIMITER ;
+
 DELIMITER $$
 CREATE TRIGGER `trg_auditoria_persona_update` AFTER UPDATE ON `persona` FOR EACH ROW BEGIN
     INSERT INTO auditoria (id_usuario, tipo, accion, fecha, hora)

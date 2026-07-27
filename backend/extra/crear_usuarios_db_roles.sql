@@ -41,6 +41,7 @@ GRANT SELECT ON sistemaacademico.director_carrera TO 'usr_login'@'localhost';
 -- B. USUARIO ESTUDIANTE (usr_estudiante)
 -- Permisos de lectura sobre catálogo académico e historial propio, y ejecución de inscripción
 -- ------------------------------------------------------------------------------
+GRANT SELECT ON sistemaacademico.carrera TO 'usr_estudiante'@'localhost';
 GRANT SELECT ON sistemaacademico.materia TO 'usr_estudiante'@'localhost';
 GRANT SELECT ON sistemaacademico.paralelo TO 'usr_estudiante'@'localhost';
 GRANT SELECT ON sistemaacademico.plan_estudio TO 'usr_estudiante'@'localhost';
@@ -67,6 +68,7 @@ GRANT EXECUTE ON FUNCTION sistemaacademico.fn_tiene_prerrequisitos TO 'usr_estud
 -- C. USUARIO DOCENTE (usr_docente)
 -- Permisos de consulta académica y gestión completa sobre sus criterios y notas
 -- ------------------------------------------------------------------------------
+GRANT SELECT ON sistemaacademico.carrera TO 'usr_docente'@'localhost';
 GRANT SELECT ON sistemaacademico.materia TO 'usr_docente'@'localhost';
 GRANT SELECT ON sistemaacademico.paralelo TO 'usr_docente'@'localhost';
 GRANT SELECT ON sistemaacademico.plan_estudio TO 'usr_docente'@'localhost';
