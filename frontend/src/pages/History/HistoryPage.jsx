@@ -13,20 +13,30 @@ export default function HistoryPage() {
   const [busqueda, setBusqueda] = useState("");
 
   const listaEstudiantes = useMemo(() => {
-    return data.estudiantes
-      .map((e) => {
-        const estReal = data.getEstudiante ? data.getEstudiante(e.id_persona) : e;
-        return { ...estReal, persona: data.getPersona(e.id_persona) };
-      })
-      .filter((e) => {
-        const q = busqueda.toLowerCase();
-        return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.persona.ci || ''} ${e.ru || ''}`.toLowerCase().includes(q);
-      });
+    const fuente = (data.estudiantes && data.estudiantes.length > 0) ? data.estudiantes : (data.personas || []);
+    const mapa = new Map();
+    fuente.forEach((e) => {
+      const idPers = Number(e.id_persona);
+      if (idPers > 0 && !mapa.has(idPers)) {
+        const estReal = data.getEstudiante ? data.getEstudiante(idPers) : e;
+        const persona = data.getPersona(idPers);
+        mapa.set(idPers, { ...estReal, id_persona: idPers, persona });
+      }
+    });
+
+    return Array.from(mapa.values()).filter((e) => {
+      const q = (busqueda || '').toLowerCase().trim();
+      if (!q) return true;
+      const nom = `${e.persona.nombres || ''} ${e.persona.apellidos || ''}`.toLowerCase();
+      const ci = String(e.persona.ci || '').toLowerCase();
+      const ru = String(e.ru || '').toLowerCase();
+      return nom.includes(q) || ci.includes(q) || ru.includes(q);
+    });
   }, [data, busqueda]);
 
   const estudianteIdActual = esEstudiante
     ? session?.id_persona
-    : (idEstudiante || data.estudiantes[0]?.id_persona);
+    : (idEstudiante || (listaEstudiantes[0]?.id_persona || data.estudiantes[0]?.id_persona));
 
   const estudianteActivo = data.getEstudiante ? data.getEstudiante(estudianteIdActual) : { id_persona: estudianteIdActual, ru: `RU-${estudianteIdActual}`, anio_ingreso: 2021 };
   const personaActiva = data.getPersona(estudianteIdActual);

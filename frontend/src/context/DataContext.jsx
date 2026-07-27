@@ -172,24 +172,30 @@ export function DataProvider({ children }) {
         const newDet = [];
 
         rawIns.forEach((row, index) => {
-          const id_inscripcion = row.id_inscripcion || index + 1;
-          const id_detalle = row.id_detalle || index + 1;
-          if (!newIns.some((i) => i.id_inscripcion === id_inscripcion)) {
+          const id_inscripcion = Number(row.id_inscripcion || index + 1);
+          const id_detalle = Number(row.id_detalle || index + 1);
+          const id_estudiante = Number(row.id_estudiante || row.id_persona || 0);
+
+          if (id_estudiante > 0 && !newIns.some((i) => Number(i.id_inscripcion) === id_inscripcion && Number(i.id_estudiante) === id_estudiante)) {
             newIns.push({
               id_inscripcion,
-              id_estudiante: row.id_estudiante || row.id_persona || 1,
-              id_gestion: row.id_gestion || 1,
+              id_estudiante,
+              id_gestion: Number(row.id_gestion || 1),
               fecha_registro: row.fecha_registro || new Date().toISOString().slice(0, 10),
             });
           }
-          newDet.push({
-            id_detalle,
-            id_inscripcion,
-            id_materia: row.id_materia,
-            id_paralelo: row.id_paralelo || 1,
-            estado: row.estado || "Inscrito",
-            nota_final: row.nota_final !== null && row.nota_final !== undefined ? Number(row.nota_final) : null,
-          });
+          if (id_estudiante > 0) {
+            newDet.push({
+              id_detalle,
+              id_inscripcion,
+              id_estudiante,
+              id_gestion: Number(row.id_gestion || 1),
+              id_materia: Number(row.id_materia),
+              id_paralelo: Number(row.id_paralelo || 1),
+              estado: row.estado || "Inscrito",
+              nota_final: row.nota_final !== null && row.nota_final !== undefined ? Number(row.nota_final) : null,
+            });
+          }
         });
 
         setInscripciones(newIns);
@@ -220,19 +226,31 @@ export function DataProvider({ children }) {
   const estudiantesCalculados = useMemo(() => {
     const mapaEst = new Map();
     (estudiantes || []).forEach((e) => {
-      if (e && e.id_persona) mapaEst.set(Number(e.id_persona), e);
+      if (e && e.id_persona) {
+        const idP = Number(e.id_persona);
+        mapaEst.set(idP, {
+          id_persona: idP,
+          ru: e.ru || `${1006000 + idP}`,
+          id_plan: e.id_plan || 1,
+          anio_ingreso: e.anio_ingreso || 2021,
+        });
+      }
     });
 
-    const fuente = personas.length > 0 ? personas : usuarios;
-    return fuente.map((p) => {
-      const eMatch = mapaEst.get(Number(p.id_persona));
-      return {
-        id_persona: Number(p.id_persona),
-        ru: eMatch?.ru || p.ru || `${1006000 + Number(p.id_persona)}`,
-        id_plan: eMatch?.id_plan || p.id_plan || 1,
-        anio_ingreso: eMatch?.anio_ingreso || p.anio_ingreso || 2021,
-      };
+    const fuente = (personas || []).length > 0 ? personas : usuarios;
+    (fuente || []).forEach((p) => {
+      const idP = Number(p.id_persona);
+      if (idP > 0 && !mapaEst.has(idP)) {
+        mapaEst.set(idP, {
+          id_persona: idP,
+          ru: p.ru || `${1006000 + idP}`,
+          id_plan: p.id_plan || 1,
+          anio_ingreso: p.anio_ingreso || 2021,
+        });
+      }
     });
+
+    return Array.from(mapaEst.values());
   }, [estudiantes, personas, usuarios]);
 
   const docentesCalculados = useMemo(() => {
@@ -319,13 +337,15 @@ export function DataProvider({ children }) {
     )];
 
   const getHistorialEstudiante = (id_estudiante) => {
-    const insEst = (inscripciones || []).filter((i) => Number(i.id_estudiante) === Number(id_estudiante));
+    const idEst = Number(id_estudiante);
+    const insEst = (inscripciones || []).filter((i) => Number(i.id_estudiante) === idEst);
     const idsIns = insEst.map((i) => Number(i.id_inscripcion));
     const raw = (detalle || [])
-      .filter((d) => idsIns.includes(Number(d.id_inscripcion)))
+      .filter((d) => Number(d.id_estudiante) === idEst || idsIns.includes(Number(d.id_inscripcion)))
       .map((d) => {
         const ins = insEst.find((i) => Number(i.id_inscripcion) === Number(d.id_inscripcion));
-        const gestion = (gestiones || []).find((g) => Number(g.id_gestion) === Number(ins ? ins.id_gestion : 1)) || { id_gestion: 1, periodo: "I/2026" };
+        const idGest = d.id_gestion || (ins ? ins.id_gestion : 1);
+        const gestion = (gestiones || []).find((g) => Number(g.id_gestion) === Number(idGest)) || { id_gestion: idGest, periodo: "Invierno/2026" };
         const notaCalc = calcularNotaFinal(d.id_materia, d.id_paralelo, d.id_detalle);
         const nota_final = (d.nota_final !== null && d.nota_final !== undefined && Number(d.nota_final) > 0)
           ? Number(d.nota_final)
@@ -342,18 +362,15 @@ export function DataProvider({ children }) {
       })
       .filter((d) => d.gestion && d.materia);
 
-    const mapaPorMateria = new Map();
+    const mapaPorDetalle = new Map();
     raw.forEach((item) => {
-      const key = `${item.gestion.id_gestion}-${item.id_materia}`;
-      const existente = mapaPorMateria.get(key);
-      if (!existente) {
-        mapaPorMateria.set(key, item);
-      } else if (existente.estado === "Abandono" && item.estado !== "Abandono") {
-        mapaPorMateria.set(key, item);
+      const key = `${item.id_detalle}`;
+      if (!mapaPorDetalle.has(key)) {
+        mapaPorDetalle.set(key, item);
       }
     });
 
-    return Array.from(mapaPorMateria.values()).sort((a, b) => a.gestion.periodo.localeCompare(b.gestion.periodo));
+    return Array.from(mapaPorDetalle.values()).sort((a, b) => (b.gestion?.periodo || '').localeCompare(a.gestion?.periodo || ''));
   };
 
   const getEstadoMateriaParaEstudiante = (id_estudiante, id_materia) => {

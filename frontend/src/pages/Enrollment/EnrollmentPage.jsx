@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { useToast } from "../../context/ToastContext";
@@ -237,20 +237,42 @@ function VistaEstudiante({ session, data, gestionActiva }) {
 
 function VistaAdministrador({ data, gestionActiva }) {
   const { showSuccess, showInfo } = useToast();
-  const [idGestion, setIdGestion] = useState(gestionActiva?.id_gestion || 1);
+  const [idGestion, setIdGestion] = useState(gestionActiva?.id_gestion || null);
   const [filtroEstudiante, setFiltroEstudiante] = useState("");
 
+  // Sincronizar la gestión seleccionada con la gestión activa al cargar
+  useEffect(() => {
+    if (gestionActiva?.id_gestion && (!idGestion || idGestion === 1)) {
+      setIdGestion(gestionActiva.id_gestion);
+    }
+  }, [gestionActiva?.id_gestion]);
+
+  const targetGestionId = idGestion || gestionActiva?.id_gestion;
+
   const filas = useMemo(() => {
-    return data.estudiantes
+    return (data.estudiantes || [])
       .map((e) => {
         const estReal = data.getEstudiante ? data.getEstudiante(e.id_persona) : e;
         const persona = data.getPersona(e.id_persona);
-        const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => Number(h.gestion?.id_gestion) === Number(idGestion));
-        return { estudiante: estReal, persona, historial };
+        const todoHistorial = data.getHistorialEstudiante(e.id_persona);
+        
+        let historialFiltrado = todoHistorial;
+        if (idGestion && idGestion !== "TODAS") {
+          const gestObj = (data.gestiones || []).find((g) => Number(g.id_gestion) === Number(idGestion));
+          const idGNum = Number(idGestion);
+          historialFiltrado = todoHistorial.filter((h) => {
+            const matchesId = Number(h.gestion?.id_gestion) === idGNum;
+            const matchesPeriodo = gestObj && h.gestion?.periodo === gestObj.periodo;
+            return matchesId || matchesPeriodo;
+          });
+        }
+
+        const historialFinal = (historialFiltrado && historialFiltrado.length > 0) ? historialFiltrado : todoHistorial;
+        return { estudiante: estReal, persona, historial: historialFinal };
       })
       .filter((f) => {
-        const q = filtroEstudiante.toLowerCase();
-        return !q || `${f.persona.nombres} ${f.persona.apellidos} ${f.estudiante.ru}`.toLowerCase().includes(q);
+        const q = (filtroEstudiante || '').toLowerCase().trim();
+        return !q || `${f.persona.nombres || ''} ${f.persona.apellidos || ''} ${f.estudiante.ru || ''}`.toLowerCase().includes(q);
       });
   }, [data, idGestion, filtroEstudiante]);
 
@@ -262,9 +284,10 @@ function VistaAdministrador({ data, gestionActiva }) {
         actions={
           <>
             <input className="search-input" placeholder="Buscar estudiante o RU..." value={filtroEstudiante} onChange={(e) => setFiltroEstudiante(e.target.value)} />
-            <select value={idGestion} onChange={(e) => setIdGestion(Number(e.target.value))}>
+            <select value={idGestion || "TODAS"} onChange={(e) => setIdGestion(e.target.value === "TODAS" ? "TODAS" : Number(e.target.value))}>
+              <option value="TODAS">Ver Todas las Gestiones</option>
               {data.gestiones.map((g) => (
-                <option key={g.id_gestion} value={g.id_gestion}>{g.periodo}</option>
+                <option key={g.id_gestion} value={g.id_gestion}>{g.periodo} {(g.estado || '').toLowerCase() === 'activa' ? '● Activa' : ''}</option>
               ))}
             </select>
           </>

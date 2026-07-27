@@ -12,7 +12,7 @@ export const obtTodo = async () => {
             sexo,
             email
         FROM persona
-        WHERE estado='A'
+        WHERE (estado='A' OR estado='Activo' OR estado IS NULL)
     `);
     return resultado;
 };
@@ -28,7 +28,7 @@ export const obtActor = async (id) => {
             sexo,
             email
         FROM persona
-        WHERE id_persona=? AND estado='A'
+        WHERE id_persona=? AND (estado='A' OR estado='Activo' OR estado IS NULL)
     `,[id]);
     return resultado[0];
 };
@@ -37,7 +37,7 @@ export const inserta = async (actor) => {
     const { ci, nombres, apellidos, fecha_nac, sexo, email } = actor;
     const [resultado] = await pool.query(`
         INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
-        VALUES (?,?,?,?,?,?,'A')
+        VALUES (?,?,?,?,?,?,'Activo')
     `,[ci, nombres, apellidos, fecha_nac, sexo, email]);
 
     return {
@@ -59,7 +59,7 @@ export const actualiza = async (id, actor) => {
 
 export const elimina = async (id) => {
     await pool.query(`
-        UPDATE persona SET estado='I' WHERE id_persona=?
+        UPDATE persona SET estado='Inactivo' WHERE id_persona=?
     `,[id]);
     return id;
 };
@@ -81,7 +81,7 @@ export const obtTodoEstudiantes = async () => {
             e.anio_ingreso
         FROM persona p
         INNER JOIN estudiante e ON p.id_persona = e.id_persona
-        WHERE p.estado='A'
+        WHERE (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `);
     return resultado;
 };
@@ -99,7 +99,7 @@ export const obtEstudiante = async (id) => {
             e.anio_ingreso
         FROM persona p
         INNER JOIN estudiante e ON p.id_persona = e.id_persona
-        WHERE p.id_persona=? AND p.estado='A'
+        WHERE p.id_persona=? AND (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `,[id]);
     return resultado[0];
 };
@@ -112,13 +112,13 @@ export const insertaEst = async (estudiante) => {
         const hash = await bcrypt.hash(password, 10);
         const [persona] = await conexion.query(`
             INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
-            VALUES (?,?,?,?,?,?,'A')
+            VALUES (?,?,?,?,?,?,'Activo')
         `,[ci, nombres, apellidos, fecha_nac, sexo, email]);
         const id_persona = persona.insertId;
 
         const [usuario] = await conexion.query(`
             INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
-            VALUES (?,?,?,4,'A')
+            VALUES (?,?,?,4,'Activo')
         `,[username, hash, id_persona]);
         const id_usuario = usuario.insertId;
 
@@ -147,7 +147,7 @@ export const actualizaEst = async (id, estudiante) => {
 };
 
 export const eliminaEst = async (id) => {
-    await pool.query(`UPDATE persona SET estado='I' WHERE id_persona=?`,[id]);
+    await pool.query(`UPDATE persona SET estado='Inactivo' WHERE id_persona=?`,[id]);
     return id;
 };
 
@@ -169,7 +169,7 @@ export const obtTodoDocentes = async () => {
             d.grado_academico
         FROM persona p
         INNER JOIN docente d ON p.id_persona = d.id_persona
-        WHERE p.estado='A'
+        WHERE (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `);
     return resultado;
 };
@@ -188,7 +188,7 @@ export const obtDocente = async (id) => {
             d.grado_academico
         FROM persona p
         INNER JOIN docente d ON p.id_persona = d.id_persona
-        WHERE p.id_persona=? AND p.estado='A'
+        WHERE p.id_persona=? AND (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `,[id]);
     return resultado[0];
 };
@@ -220,8 +220,8 @@ export const eliminaDoc = async (id) => {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
-        await conexion.query(`UPDATE persona SET estado='I' WHERE id_persona=?`,[id]);
-        await conexion.query(`UPDATE usuario SET estado='I' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE persona SET estado='Inactivo' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE usuario SET estado='Inactivo' WHERE id_persona=?`,[id]);
         await conexion.commit();
         return id;
     } catch (error) {
@@ -240,13 +240,13 @@ export const insertaDoc = async (docente) => {
         const hash = await bcrypt.hash(password, 10);
         const [persona] = await conexion.query(`
             INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
-            VALUES (?,?,?,?,?,?,'A')
+            VALUES (?,?,?,?,?,?,'Activo')
         `,[ci, nombres, apellidos, fecha_nac, sexo, email]);
         const id_persona = persona.insertId;
 
         const [usuario] = await conexion.query(`
             INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
-            VALUES (?,?,?,3,'A')
+            VALUES (?,?,?,3,'Activo')
         `,[username, hash, id_persona]);
         const id_usuario = usuario.insertId;
 
@@ -285,7 +285,7 @@ export const obtTodoAdministrativos = async () => {
         FROM persona p
         INNER JOIN administrativo a ON p.id_persona = a.id_persona
         LEFT JOIN carrera c ON a.id_carrera = c.id_carrera
-        WHERE p.estado='A'
+        WHERE (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `);
     return resultado;
 };
@@ -306,7 +306,7 @@ export const obtAdministrativo = async (id) => {
         FROM persona p
         INNER JOIN administrativo a ON p.id_persona = a.id_persona
         LEFT JOIN carrera c ON a.id_carrera = c.id_carrera
-        WHERE p.id_persona=? AND p.estado='A'
+        WHERE p.id_persona=? AND (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `,[id]);
     return resultado[0];
 };
@@ -338,8 +338,8 @@ export const eliminaAdm = async (id) => {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
-        await conexion.query(`UPDATE persona SET estado='I' WHERE id_persona=?`,[id]);
-        await conexion.query(`UPDATE usuario SET estado='I' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE persona SET estado='Inactivo' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE usuario SET estado='Inactivo' WHERE id_persona=?`,[id]);
         await conexion.commit();
         return id;
     } catch (error) {
@@ -358,13 +358,13 @@ export const insertaAdm = async (administrativo) => {
         const hash = await bcrypt.hash(password, 10);
         const [persona] = await conexion.query(`
             INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
-            VALUES (?,?,?,?,?,?,'A')
+            VALUES (?,?,?,?,?,?,'Activo')
         `,[ci, nombres, apellidos, fecha_nac, sexo, email]);
         const id_persona = persona.insertId;
 
         const [usuario] = await conexion.query(`
             INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
-            VALUES (?,?,?,1,'A')
+            VALUES (?,?,?,1,'Activo')
         `,[username, hash, id_persona]);
         const id_usuario = usuario.insertId;
 
@@ -406,7 +406,7 @@ export const obtTodoDirectores = async () => {
         INNER JOIN director_carrera dc ON p.id_persona = dc.id_persona
         INNER JOIN director_carrera_asignacion a ON dc.id_persona = a.id_persona
         INNER JOIN carrera c ON a.id_carrera = c.id_carrera
-        WHERE p.estado='A'
+        WHERE (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `);
     return resultado;
 };
@@ -431,7 +431,7 @@ export const obtDirector = async (id) => {
         INNER JOIN director_carrera dc ON p.id_persona = dc.id_persona
         INNER JOIN director_carrera_asignacion a ON dc.id_persona = a.id_persona
         INNER JOIN carrera c ON a.id_carrera = c.id_carrera
-        WHERE p.id_persona=? AND p.estado='A'
+        WHERE p.id_persona=? AND (p.estado='A' OR p.estado='Activo' OR p.estado IS NULL)
     `,[id]);
     return resultado[0];
 };
@@ -467,8 +467,8 @@ export const eliminaDirector = async (id) => {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
-        await conexion.query(`UPDATE persona SET estado='I' WHERE id_persona=?`,[id]);
-        await conexion.query(`UPDATE usuario SET estado='I' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE persona SET estado='Inactivo' WHERE id_persona=?`,[id]);
+        await conexion.query(`UPDATE usuario SET estado='Inactivo' WHERE id_persona=?`,[id]);
         await conexion.commit();
         return id;
     } catch (error) {
@@ -487,13 +487,13 @@ export const insertaDirec = async (director) => {
         const hash = await bcrypt.hash(password, 10);
         const [persona] = await conexion.query(`
             INSERT INTO persona (ci, nombres, apellidos, fecha_nac, sexo, email, estado)
-            VALUES (?,?,?,?,?,?,'A')
+            VALUES (?,?,?,?,?,?,'Activo')
         `,[ci, nombres, apellidos, fecha_nac, sexo, email]);
         const id_persona = persona.insertId;
 
         const [usuario] = await conexion.query(`
             INSERT INTO usuario (username, password_hash, id_persona, id_rol, estado)
-            VALUES (?,?,?,2,'A')
+            VALUES (?,?,?,2,'Activo')
         `,[username, hash, id_persona]);
         const id_usuario = usuario.insertId;
 
