@@ -34,9 +34,15 @@ function VistaDocente({ session, data }) {
   // misParalelos recalculado dinámicamente
   const misParalelos = useMemo(() => {
     if (!session?.id_persona) return [];
-    return (data.paralelos || []).filter(
+    const filtrados = (data.paralelos || []).filter(
       (p) => Number(p.id_docente) === Number(session.id_persona) && (!gestionActiva || Number(p.id_gestion) === Number(gestionActiva.id_gestion))
     );
+    const mapa = new Map();
+    filtrados.forEach((p) => {
+      const key = `${p.id_materia}-${p.id_paralelo}`;
+      if (!mapa.has(key)) mapa.set(key, p);
+    });
+    return Array.from(mapa.values());
   }, [data.paralelos, session?.id_persona, gestionActiva]);
 
   // Selección activa computada
@@ -468,8 +474,13 @@ function VistaSupervisor({ data }) {
     const directos = (data.paralelos || []).filter(
       (p) => Number(p.id_materia) === Number(idMateria) && Number(p.id_gestion) === Number(gestionActiva?.id_gestion)
     );
-    if (directos.length > 0) return directos;
-    return (data.paralelos || []).filter((p) => Number(p.id_materia) === Number(idMateria));
+    const fuente = directos.length > 0 ? directos : (data.paralelos || []).filter((p) => Number(p.id_materia) === Number(idMateria));
+    const mapa = new Map();
+    fuente.forEach((p) => {
+      const key = `${p.id_materia}-${p.id_paralelo}`;
+      if (!mapa.has(key)) mapa.set(key, p);
+    });
+    return Array.from(mapa.values());
   }, [data.paralelos, idMateria, gestionActiva]);
 
   return (

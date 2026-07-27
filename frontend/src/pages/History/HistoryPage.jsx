@@ -14,7 +14,10 @@ export default function HistoryPage() {
 
   const listaEstudiantes = useMemo(() => {
     return data.estudiantes
-      .map((e) => ({ ...e, persona: data.getPersona(e.id_persona) }))
+      .map((e) => {
+        const estReal = data.getEstudiante ? data.getEstudiante(e.id_persona) : e;
+        return { ...estReal, persona: data.getPersona(e.id_persona) };
+      })
       .filter((e) => {
         const q = busqueda.toLowerCase();
         return !q || `${e.persona.nombres} ${e.persona.apellidos} ${e.persona.ci || ''} ${e.ru || ''}`.toLowerCase().includes(q);
@@ -25,7 +28,7 @@ export default function HistoryPage() {
     ? session?.id_persona
     : (idEstudiante || data.estudiantes[0]?.id_persona);
 
-  const estudianteActivo = data.estudiantes.find((e) => e.id_persona === estudianteIdActual) || { id_persona: estudianteIdActual, ru: `RU-${estudianteIdActual}`, anio_ingreso: 2021 };
+  const estudianteActivo = data.getEstudiante ? data.getEstudiante(estudianteIdActual) : { id_persona: estudianteIdActual, ru: `RU-${estudianteIdActual}`, anio_ingreso: 2021 };
   const personaActiva = data.getPersona(estudianteIdActual);
   const historial = data.getHistorialEstudiante(estudianteIdActual);
 
@@ -48,7 +51,7 @@ export default function HistoryPage() {
           <>
             {!esEstudiante && (
               <>
-                <input className="search-input" placeholder="Buscar por Nombre, CI o RU..." value={busqueda} onChange={(e) => setSearch(e.target.value || "") || setBusqueda(e.target.value)} />
+                <input className="search-input" placeholder="Buscar por Nombre, CI o RU..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
                 <select value={estudianteIdActual || ""} onChange={(e) => setIdEstudiante(Number(e.target.value))}>
                   {listaEstudiantes.map((e) => (
                     <option key={e.id_persona} value={e.id_persona}>{e.persona.nombres} {e.persona.apellidos} — CI: {e.persona.ci} (RU: {e.ru})</option>

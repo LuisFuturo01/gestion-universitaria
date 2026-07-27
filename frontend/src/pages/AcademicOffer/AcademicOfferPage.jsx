@@ -93,10 +93,11 @@ export default function AcademicOfferPage() {
       .filter((p) => Number(p.id_docente) === Number(idDocenteObjetivo))
       .map((p) => {
         const mat = data.getMateria ? data.getMateria(p.id_materia) : null;
-        const gest = (data.gestiones || []).find((g) => g.id_gestion === p.id_gestion);
-        const sec = (data.seCursa || []).find((s) => s.id_materia === p.id_materia && s.id_paralelo === p.id_paralelo);
-        const aulaObj = sec ? (data.aulas || []).find((a) => a.id_aula === sec.id_aula) : null;
-        const horObj = sec ? (data.horarios || []).find((h) => h.id_horario === sec.id_horario) : null;
+        const gest = (data.gestiones || []).find((g) => Number(g.id_gestion) === Number(p.id_gestion));
+        const sec = (data.seCursa || []).find((s) => Number(s.id_materia) === Number(p.id_materia) && Number(s.id_paralelo) === Number(p.id_paralelo));
+        const aulaObj = sec ? (data.aulas || []).find((a) => Number(a.id_aula) === Number(sec.id_aula)) : null;
+        const horObj = sec ? (data.horarios || []).find((h) => Number(h.id_horario) === Number(sec.id_horario)) : null;
+        const aulaTexto = aulaObj ? (aulaObj.nombre || (aulaObj.numero ? `Aula ${aulaObj.numero}` : `Aula #${aulaObj.id_aula}`)) : 'Sin asignación';
 
         return {
           ...p,
@@ -104,7 +105,7 @@ export default function AcademicOfferPage() {
           materiaSigla: mat?.sigla || `MAT-${p.id_materia}`,
           periodoGestion: gest?.periodo || `Gestión ${p.id_gestion}`,
           estadoGestion: gest?.estado || 'Cerrada',
-          aulaNombre: aulaObj ? `Aula ${aulaObj.numero}` : 'Sin asignación',
+          aulaNombre: aulaTexto,
           horarioStr: horObj ? `${horObj.dia} ${horObj.hora_inicio} - ${horObj.hora_fin}` : 'Horario a definir'
         };
       });
@@ -113,19 +114,20 @@ export default function AcademicOfferPage() {
   // Paralelos disponibles sin docente asignado en la gestión activa
   const paralelosSinDocente = useMemo(() => {
     return (data.paralelos || [])
-      .filter((p) => (!p.id_docente || Number(p.id_docente) === 0) && p.id_gestion === gestionActiva?.id_gestion)
+      .filter((p) => (!p.id_docente || Number(p.id_docente) === 0) && Number(p.id_gestion) === Number(gestionActiva?.id_gestion))
       .map((p) => {
         const mat = data.getMateria ? data.getMateria(p.id_materia) : null;
-        const sec = (data.seCursa || []).find((s) => s.id_materia === p.id_materia && s.id_paralelo === p.id_paralelo);
-        const aulaObj = sec ? (data.aulas || []).find((a) => a.id_aula === sec.id_aula) : null;
-        const horObj = sec ? (data.horarios || []).find((h) => h.id_horario === sec.id_horario) : null;
+        const sec = (data.seCursa || []).find((s) => Number(s.id_materia) === Number(p.id_materia) && Number(s.id_paralelo) === Number(p.id_paralelo));
+        const aulaObj = sec ? (data.aulas || []).find((a) => Number(a.id_aula) === Number(sec.id_aula)) : null;
+        const horObj = sec ? (data.horarios || []).find((h) => Number(h.id_horario) === Number(sec.id_horario)) : null;
+        const aulaTexto = aulaObj ? (aulaObj.nombre || (aulaObj.numero ? `Aula ${aulaObj.numero}` : `Aula #${aulaObj.id_aula}`)) : 'Aula a definir';
 
         return {
           ...p,
           materiaNombre: mat?.nombre || `Materia #${p.id_materia}`,
           materiaSigla: mat?.sigla || `MAT-${p.id_materia}`,
-          aulaNombre: aulaObj ? `Aula ${aulaObj.numero}` : 'Aula a definir',
-          horarioStr: horObj ? `${horObj.dia} ${horObj.hora_inicio}` : 'Horario a definir'
+          aulaNombre: aulaTexto,
+          horarioStr: horObj ? `${horObj.dia} ${horObj.hora_inicio} - ${horObj.hora_fin}` : 'Horario a definir'
         };
       });
   }, [data.paralelos, gestionActiva, data.seCursa, data.aulas, data.horarios, data]);
@@ -486,9 +488,14 @@ export default function AcademicOfferPage() {
                           )}
                         </td>
                         <td>
-                          {p.horario
-                            ? `${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.dia || ''} ${data.horarios.find((h) => h.id_horario === p.horario.id_horario)?.hora_inicio || ''}`
-                            : "Aula / Horario a definir"}
+                          {(() => {
+                            const sec = (data.seCursa || []).find((s) => Number(s.id_materia) === Number(p.id_materia) && Number(s.id_paralelo) === Number(p.id_paralelo));
+                            const aulaObj = sec ? (data.aulas || []).find((a) => Number(a.id_aula) === Number(sec.id_aula)) : null;
+                            const horObj = sec ? (data.horarios || []).find((h) => Number(h.id_horario) === Number(sec.id_horario)) : (p.horario ? (data.horarios || []).find((h) => Number(h.id_horario) === Number(p.horario.id_horario)) : null);
+                            const aulaTxt = aulaObj ? (aulaObj.nombre || (aulaObj.numero ? `Aula ${aulaObj.numero}` : `Aula #${aulaObj.id_aula}`)) : '';
+                            const horTxt = horObj ? `${horObj.dia} ${horObj.hora_inicio} - ${horObj.hora_fin}` : 'Horario a definir';
+                            return aulaTxt ? `${aulaTxt} · ${horTxt}` : horTxt;
+                          })()}
                         </td>
                         <td>
                           <strong>{p.cupo_actual || 0}</strong> / {p.cupo_maximo}{" "}

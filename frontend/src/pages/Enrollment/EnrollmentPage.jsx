@@ -238,9 +238,10 @@ function VistaAdministrador({ data, gestionActiva }) {
   const filas = useMemo(() => {
     return data.estudiantes
       .map((e) => {
+        const estReal = data.getEstudiante ? data.getEstudiante(e.id_persona) : e;
         const persona = data.getPersona(e.id_persona);
         const historial = data.getHistorialEstudiante(e.id_persona).filter((h) => h.gestion?.id_gestion === idGestion);
-        return { estudiante: e, persona, historial };
+        return { estudiante: estReal, persona, historial };
       })
       .filter((f) => {
         const q = filtroEstudiante.toLowerCase();

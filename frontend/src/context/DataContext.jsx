@@ -201,23 +201,40 @@ export function DataProvider({ children }) {
     reloadFromBackend();
   }, []);
 
-  // Derivación segura de estudiantes y docentes por carrera
+  // Deduplicación global de paralelos por (id_materia, id_paralelo, id_gestion)
+  const paralelosDeduplicados = useMemo(() => {
+    const mapa = new Map();
+    (paralelos || []).forEach((p) => {
+      const key = `${p.id_materia}-${p.id_paralelo}-${p.id_gestion || 1}`;
+      if (!mapa.has(key)) mapa.set(key, p);
+    });
+    return Array.from(mapa.values());
+  }, [paralelos]);
+
+  // Derivación segura de estudiantes y docentes vinculando el RU real de la base de datos
   const estudiantesCalculados = useMemo(() => {
-    if (estudiantes.length > 0) return estudiantes;
+    const mapaEst = new Map();
+    (estudiantes || []).forEach((e) => {
+      if (e && e.id_persona) mapaEst.set(Number(e.id_persona), e);
+    });
+
     const fuente = personas.length > 0 ? personas : usuarios;
-    return fuente.map((p) => ({
-      id_persona: p.id_persona,
-      ru: p.ru || `RU-${p.id_persona}`,
-      id_plan: p.id_plan || 1,
-      anio_ingreso: p.anio_ingreso || 2021,
-    }));
+    return fuente.map((p) => {
+      const eMatch = mapaEst.get(Number(p.id_persona));
+      return {
+        id_persona: Number(p.id_persona),
+        ru: eMatch?.ru || p.ru || `${1006000 + Number(p.id_persona)}`,
+        id_plan: eMatch?.id_plan || p.id_plan || 1,
+        anio_ingreso: eMatch?.anio_ingreso || p.anio_ingreso || 2021,
+      };
+    });
   }, [estudiantes, personas, usuarios]);
 
   const docentesCalculados = useMemo(() => {
     if (docentes.length > 0) return docentes;
     const fuente = personas.length > 0 ? personas : usuarios;
     return fuente.map((p) => ({
-      id_persona: p.id_persona,
+      id_persona: Number(p.id_persona),
       registro_docente: p.registro_docente || `DOC-${p.id_persona}`,
       grado_academico: p.grado_academico || "Lic.",
     }));
@@ -233,9 +250,9 @@ export function DataProvider({ children }) {
   };
 
   const getPersona = (id_persona) => {
-    const fromP = personas.find((p) => p.id_persona === id_persona);
+    const fromP = personas.find((p) => Number(p.id_persona) === Number(id_persona));
     if (fromP && fromP.nombres) return fromP;
-    const fromU = usuarios.find((u) => u.id_persona === id_persona || u.id_usuario === id_persona);
+    const fromU = usuarios.find((u) => Number(u.id_persona) === Number(id_persona) || Number(u.id_usuario) === Number(id_persona));
     if (fromU) return {
       id_persona: fromU.id_persona || id_persona,
       nombres: fromU.nombres || fromU.username,
@@ -244,6 +261,18 @@ export function DataProvider({ children }) {
       email: fromU.email || "—"
     };
     return { id_persona, nombres: "—", apellidos: "", ci: "—", email: "—" };
+  };
+
+  const getEstudiante = (id_persona) => {
+    const est = (estudiantesCalculados || []).find((e) => Number(e.id_persona) === Number(id_persona));
+    if (est && est.ru) return est;
+    const persona = (personas || []).find((p) => Number(p.id_persona) === Number(id_persona));
+    return {
+      id_persona: Number(id_persona),
+      ru: persona?.ru || `${1006000 + Number(id_persona)}`,
+      id_plan: persona?.id_plan || 1,
+      anio_ingreso: 2021
+    };
   };
 
   const getGestionActiva = () => {
@@ -522,7 +551,7 @@ export function DataProvider({ children }) {
       usuarios,
       tieneRol,
       personas,
-      paralelos,
+      paralelos: paralelosDeduplicados,
       inscripciones,
       detalle,
       criterios,
@@ -538,6 +567,7 @@ export function DataProvider({ children }) {
       loadingBackend,
       reloadFromBackend,
       getPersona,
+      getEstudiante,
       getGestionActiva,
       getDocenteNombre,
       getMateria,
@@ -572,7 +602,7 @@ export function DataProvider({ children }) {
       usuarios,
       tieneRol,
       personas,
-      paralelos,
+      paralelosDeduplicados,
       inscripciones,
       detalle,
       criterios,
